@@ -460,7 +460,7 @@ public:
 	void train(const vector<Sentence>& train_sentences, const vector<Sentence>& dev_sentences, 
 						 const vector<Sentence>& test_sentences, const Vocab& form, const Vocab& transition,
 						 unsigned epoch, double lr, unsigned status_every_i_iterations,
-						 bool resume, string param, string train_state) {
+						 bool resume, string param, string trainer_state) {
 		// load parameter collection
 		if (resume && param.size()) {
 			TextFileLoader l(param);
@@ -469,8 +469,8 @@ public:
 		
 		// load trainer state
 		SimpleSGDTrainer trainer(*pc, lr);
-		if (resume && train_state.size()) {
-			ifstream is(train_state);
+		if (resume && trainer_state.size()) {
+			ifstream is(trainer_state);
 			trainer.populate(is);
 		}
 		
@@ -491,6 +491,7 @@ public:
 				tie(uas, las) = test(dev_sentences, form, transition, status_every_i_iterations, false, string(), false);
 				if (uas > best_uas) {
 					TextFileSaver s(param); s.save(*pc);
+					ofstream os(trainer_state); trainer.save(os);
 				}
 				random_shuffle(ids.begin(), ids.end()); sid = 0; trainer.learning_rate *= 0.9;
 			}
@@ -498,7 +499,7 @@ public:
 			if ((tot_seen > 0) && (tot_seen % status_every_i_iterations == 0)) {
 				trainer.status();
 				ptime time_now{second_clock::local_time()};
-      	cout << "update #" << iter << " (epoch " << (double(tot_seen) / train_sentences.size()) 
+				cout << "update #" << iter << " (epoch " << (double(tot_seen) / train_sentences.size()) 
 					<< " |time=" << time_now << ")\tllh: " << llh 
 					<<" ppl: " << exp(llh / trs) 
 					<< " err: " << (trs - right) / trs << endl;

@@ -303,7 +303,7 @@ public:
 
 		for (unsigned i = 0; i < sent.size(); ++i) {
 			assert(sent[i] < form.stoi.size());
-			Expression w =lookup(hg, p_w, sent[i]); 
+			Expression w =lookup(hg, p_w, tsent[i]); 
 			vector<Expression> args = {ib, w2l, w}; // learn embeddings
 			if (use_pos) { // learn POS tag?
 				Expression p = lookup(hg, p_p, sent_pos[i]);
@@ -536,7 +536,7 @@ public:
 				cout << i << "/" << test_sentences.size() << endl;
 			const Sentence& sent = test_sentences[i];
 			vector<unsigned> results; Expression losse;
-			tie(results, losse) = log_prob_parser(hg, sent.formi, sent.posi, sent.transitionsi, transition, form, &right);
+			tie(results, losse) = log_prob_parser(hg, sent.formi, sent.posi, vector<unsigned>(), transition, form, &right);
 			double loss = as_scalar(hg.forward(losse));
 			// compute heads and 
 			vector<int> hyp; vector<string> rels_hyp;

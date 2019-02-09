@@ -259,13 +259,8 @@ public:
 		vector<unsigned> results;
 		const bool build_training_graph = correct_actions.size() > 0;
 		// set dropout and do unk replacement
-		vector<unsigned> tsent = sent;
 		if (build_training_graph) {
 			stack_lstm.set_dropout(0.3); buffer_lstm.set_dropout(0.3); action_lstm.set_dropout(0.3);
-			for (unsigned i = 0; i < sent.size(); ++i) {
-				if ((form.itofreq.at(sent[i]) == 1) && (double(rand()) / (RAND_MAX + 1.0) < p_unk))
-					tsent[i] = form.stoi.at(Vocab::UNK);
-			}
 		} else {
 			stack_lstm.disable_dropout(); buffer_lstm.disable_dropout(); action_lstm.disable_dropout();
 		}
@@ -300,11 +295,14 @@ public:
 
 		vector<Expression> buffer(sent.size() + 1);  // variables representing word embeddings (possibly including POS info)
 		vector<int> bufferi(sent.size() + 1);  // position of the words in the sentence
+		unsigned unk_id = form.stoi.at(Vocab::UNK);
 		// precompute buffer representation from left to right
 
 		for (unsigned i = 0; i < sent.size(); ++i) {
 			assert(sent[i] < form.stoi.size());
-			Expression w =lookup(hg, p_w, tsent[i]); // WARNING: tsent is unk_replaced when training
+			unsigned wid = ((build_training_graph) && (form.itofreq.at(sent[i]) == 1) 
+												&& (double(rand()) / (RAND_MAX + 1.0) < p_unk)) ? unk_id : sent[i];
+			Expression w =lookup(hg, p_w, wid); // WARNING: tsent is unk_replaced when training
 			vector<Expression> args = {ib, w2l, w}; // learn embeddings
 			if (use_pos) { // learn POS tag?
 				Expression p = lookup(hg, p_p, sent_pos[i]);
@@ -489,7 +487,7 @@ public:
 		while (tot_seen / train_sentences.size() < epoch) {
 			if (sid == train_sentences.size()) {
 				double uas, las;
-				tie(uas, las) = test(test_sentences, form, transition, status_every_i_iterations, false, string(), false);
+				tie(uas, las) = test(dev_sentences, form, transition, status_every_i_iterations, false, string(), false);
 				if (uas > best_uas) {
 					TextFileSaver s(param); s.save(*pc);
 				}

@@ -5,6 +5,7 @@
 #include <vector>
 #include <unordered_map>
 #include <algorithm>
+#include <random>
 #include <cassert>
 
 #include <boost/program_options.hpp>
@@ -39,8 +40,9 @@ void InitCommandLine(int argc, char** argv, po::variables_map& conf) {
 		("unk_strategy,o", po::value<unsigned>()->default_value(1), "Unknown word strategy: 1 = singletons become UNK with probability unk_prob")
 		("unk_prob,u", po::value<double>()->default_value(0.2), "Probably with which to replace singletons with UNK in training data")
 		("dropout_prob,D", po::value<double>()->default_value(0.3), "Dropout probability of lstms")
-		("model,m", po::value<string>(), "Load saved model from this file")
-		("use_pos_tags,P", "make POS tags visible to parser")
+		("param,m", po::value<string>(), "Load/ save save model from/ to this file")
+		("trainer_state,s", po::value<string>(), "Load/ save trainer state from/ to this file")
+		("use_pos_tags,P", po::value<bool>(), "make POS tags visible to parser")
 		("layers", po::value<unsigned>()->default_value(2), "number of LSTM layers")
 		("action_dim", po::value<unsigned>()->default_value(16), "action embedding size")
 		("input_dim", po::value<unsigned>()->default_value(32), "input embedding size")
@@ -51,11 +53,21 @@ void InitCommandLine(int argc, char** argv, po::variables_map& conf) {
 		("lstm_input_dim", po::value<unsigned>()->default_value(60), "LSTM input dimension")
 		("train,t", "Should training be run?")
 		("words,w", po::value<string>(), "Pretrained word embeddings")
+		("config", po::value<string>(), "Config file")
 		("help,h", "Help");
 	po::options_description dcmdline_options;
 	dcmdline_options.add(opts);
-	po::store(parse_command_line(argc, argv, dcmdline_options), conf);
+
+	// allow unregistered options, pass them through to dynet
+	po::store(po::command_line_parser(argc, argv).options(dcmdline_options).allow_unregistered().run(), conf);
+
+	if (conf.count("config")){
+		ifstream ifs{conf["config"].as<string>()};
+		if (ifs)
+			po::store(po::parse_config_file(ifs, dcmdline_options), conf);
+	}
 	po::notify(conf);
+	
 	if (conf.count("help")) {
 		cerr << dcmdline_options << endl;
 		exit(1);
@@ -227,11 +239,11 @@ public:
 			string pit = sent_pos[i];
 			int hyp_head = hyp[i];
 			string hyp_rel = rel_hyp[i];
-			cout << i << '\t'       // 1. ID 
+			cout << i << '\t'          // 1. ID 
 					<< wit << '\t'         // 2. FORM
 					<< "_" << '\t'         // 3. LEMMA 
 					<< "_" << '\t'         // 4. CPOSTAG 
-					<< pit << '\t' // 5. POSTAG
+					<< pit << '\t'         // 5. POSTAG
 					<< "_" << '\t'         // 6. FEATS
 					<< hyp_head << '\t'    // 7. HEAD
 					<< hyp_rel << '\t'     // 8. DEPREL
@@ -242,13 +254,18 @@ public:
 	}
 
 	tuple<vector<unsigned>, Expression> log_prob_parser(ComputationGraph& hg, const vector<unsigned>& sent, 
-																											const vector<unsigned>& sent_pos, const vector<unsigned> correct_actions,
+																											const vector<unsigned>& sent_pos, const vector<unsigned>& correct_actions,
 																											const Vocab& transition, const Vocab& form, double* right) {
 		vector<unsigned> results;
 		const bool build_training_graph = correct_actions.size() > 0;
-		// set dropout 
+		// set dropout and do unk replacement
+		vector<unsigned> tsent = sent;
 		if (build_training_graph) {
 			stack_lstm.set_dropout(0.3); buffer_lstm.set_dropout(0.3); action_lstm.set_dropout(0.3);
+			for (unsigned i = 0; i < sent.size(); ++i) {
+				if ((form.itofreq.at(sent[i]) == 1) && (double(rand()) / (RAND_MAX + 1.0) < p_unk))
+					tsent[i] = form.stoi.at(Vocab::UNK);
+			}
 		} else {
 			stack_lstm.disable_dropout(); buffer_lstm.disable_dropout(); action_lstm.disable_dropout();
 		}
@@ -287,8 +304,7 @@ public:
 
 		for (unsigned i = 0; i < sent.size(); ++i) {
 			assert(sent[i] < form.stoi.size());
-			Expression w =lookup(hg, p_w, sent[i]);
-
+			Expression w =lookup(hg, p_w, tsent[i]); // WARNING: tsent is unk_replaced when training
 			vector<Expression> args = {ib, w2l, w}; // learn embeddings
 			if (use_pos) { // learn POS tag?
 				Expression p = lookup(hg, p_p, sent_pos[i]);
@@ -323,11 +339,6 @@ public:
 		buffer_lstm.rewind_one_step();
 		stacki.push_back(bufferi.back());
 		bufferi.pop_back();
-		
-		/* debug
-		cout << "stacki: " << stacki << endl;
-		cout << "bufferi: " << bufferi << endl;
-		*/
 		
 		// End of "Setup" code, now start the main loop
 		vector<Expression> log_probs;
@@ -540,8 +551,8 @@ public:
 		ptime end = microsec_clock::local_time();
 		if (!output) 
 			cout << "test " << test_sentences.size() << " sentences in " << (end - start).total_milliseconds() << " ms." << endl;
-		double uas = float(correct_head) / tot_tokens;
-		double las = float(correct_rel) / tot_tokens;
+		double uas = double(correct_head) / tot_tokens;
+		double las = double(correct_rel) / tot_tokens;
 		cout << "uas: " << uas << "\tlas: " << las << endl;
 		return make_tuple(uas, las);
 	}
@@ -564,12 +575,14 @@ int main(int argc, char** argv) {
 	corpus.load_corpus_dev(corpus.dev_sentences, dev_data);
 	corpus.load_corpus_dev(corpus.test_sentences, test_data);
 // 	cout << corpus.form << endl << corpus.pos << endl 
-// 	<< corpus.deprel << endl << corpus.transition << endl
-// 	<< corpus.chars << endl;
+// 		<< corpus.deprel << endl << corpus.transition << endl
+// 		<< corpus.chars << endl;
 	
 	const auto epoch = conf["epoches"].as<unsigned>();
 	const auto lr = conf["init_learning_rate"].as<double>();
 	bool resume = conf.count("resume");
+	const auto param = conf["param"].as<string>();
+	const auto trainer_state = conf["trainer_state"].as<string>();
 	const auto layers = conf["layers"].as<unsigned>();
 	const auto lstm_input_dim = conf["lstm_input_dim"].as<unsigned>();
 	const auto action_dim = conf["action_dim"].as<unsigned>();
@@ -608,7 +621,7 @@ int main(int argc, char** argv) {
 		}
 	}
 	
-	bool use_pos = conf.count("use_pos_tags");
+	bool use_pos = conf["use_pos_tags"].as<bool>();
 	unsigned pos_size = 0; 
 	unsigned pos_dim;
 	if (use_pos) {
@@ -632,13 +645,17 @@ int main(int argc, char** argv) {
 		<< "vocab_size: " << vocab_size << endl
 		<< "rel_dim: " << rel_dim << endl
 		<< "hidden_dim: "  << hidden_dim << endl
-		<< "use_pos_tags: " << use_pos << endl;
+		<< "use_pos_tags: " << use_pos << endl
+		<< "resume: " << resume << endl
+		<< "param path: " << param << endl
+		<< "trainer state: " << trainer_state << endl;
 	if (use_pos) 
 		cout << "pos_dim: " << pos_dim << endl
 			<< "pos_size: " << pos_size << endl;
 	cout << "use_pretrained: " << use_pretrained << endl;
 	if (use_pretrained) 
 		cout << "pretrained embeddings size is " << pretrained.size() << endl;
+	
 	
   cout << "Unknown word strategy: ";
   if (unk_strategy == 1) {
@@ -657,7 +674,7 @@ int main(int argc, char** argv) {
 	parser.train(corpus.train_sentences, corpus.dev_sentences, 
 							 corpus.test_sentences, corpus.form, corpus.transition,
 							 epoch, lr, status_every_i_iterations,
-							 resume, "parser.model", "trainer.state");
+							 resume, param, trainer_state);
 
 	return 0;
 }

@@ -484,7 +484,7 @@ public:
 		vector<unsigned> ids = vector<unsigned>(train_sentences.size(), 0);
 		for (unsigned i = 0; i < train_sentences.size(); ++i) ids[i] = i;
 		
-		cout << "=====training begin=====" << endl;
+		cerr << "=====training begin=====" << endl;
 		while (tot_seen / train_sentences.size() < epoch) {
 			if (sid == train_sentences.size()) {
 				double uas, las;
@@ -499,7 +499,7 @@ public:
 			if ((tot_seen > 0) && (tot_seen % status_every_i_iterations == 0)) {
 				trainer.status();
 				ptime time_now{second_clock::local_time()};
-				cout << "update #" << iter << " (epoch " << (double(tot_seen) / train_sentences.size()) 
+				cerr << "update #" << iter << " (epoch " << (double(tot_seen) / train_sentences.size()) 
 					<< " |time=" << time_now << ")\tllh: " << llh 
 					<<" ppl: " << exp(llh / trs) 
 					<< " err: " << (trs - right) / trs << endl;
@@ -534,7 +534,7 @@ public:
 		for (unsigned i = 0; i < test_sentences.size(); ++i) {
 			ComputationGraph hg;
 			if ((!output) && (i % 200 == 0))
-				cout << i << "/" << test_sentences.size() << endl;
+				cerr << i << "/" << test_sentences.size() << endl;
 			const Sentence& sent = test_sentences[i];
 			vector<unsigned> results; Expression losse;
 			tie(results, losse) = log_prob_parser(hg, sent.formi, sent.posi, vector<unsigned>(), transition, form, &right);
@@ -550,10 +550,10 @@ public:
 		}
 		ptime end = microsec_clock::local_time();
 		if (!output) 
-			cout << "test " << test_sentences.size() << " sentences in " << (end - start).total_milliseconds() << " ms." << endl;
+			cerr << "test " << test_sentences.size() << " sentences in " << (end - start).total_milliseconds() << " ms." << endl;
 		double uas = double(correct_head) / tot_tokens;
 		double las = double(correct_rel) / tot_tokens;
-		cout << "uas: " << uas << "\tlas: " << las << endl;
+		cerr << "uas: " << uas << "\tlas: " << las << endl;
 		return make_tuple(uas, las);
 	}
 };
@@ -569,12 +569,12 @@ int main(int argc, char** argv) {
 	auto test_data = conf["test_data"].as<string>();
 	
 	// Read in corpus
-	cout << "Reading corpus..." << endl;
+	cerr << "Reading corpus..." << endl;
 	Corpus corpus;
 	corpus.load_corpus(corpus.train_sentences, training_data);
 	corpus.load_corpus_dev(corpus.dev_sentences, dev_data);
 	corpus.load_corpus_dev(corpus.test_sentences, test_data);
-// 	cout << corpus.form << endl << corpus.pos << endl 
+// 	cerr << corpus.form << endl << corpus.pos << endl 
 // 		<< corpus.deprel << endl << corpus.transition << endl
 // 		<< corpus.chars << endl;
 	
@@ -631,7 +631,7 @@ int main(int argc, char** argv) {
 	const unsigned status_every_i_iterations = 100;
 	
 	// print conf 
-	cout << "======Configuration is=====" << endl
+	cerr << "======Configuration is=====" << endl
 		<< "training_data: " << training_data << endl
 		<< "training epoches: " << epoch << endl
 		<< "init learning rate: " << lr << endl 
@@ -650,21 +650,21 @@ int main(int argc, char** argv) {
 		<< "param path: " << param << endl
 		<< "trainer state: " << trainer_state << endl;
 	if (use_pos) 
-		cout << "pos_dim: " << pos_dim << endl
+		cerr << "pos_dim: " << pos_dim << endl
 			<< "pos_size: " << pos_size << endl;
-	cout << "use_pretrained: " << use_pretrained << endl;
+	cerr << "use_pretrained: " << use_pretrained << endl;
 	if (use_pretrained) 
-		cout << "pretrained embeddings size is " << pretrained.size() << endl;
+		cerr << "pretrained embeddings size is " << pretrained.size() << endl;
 	
 	
-  cout << "Unknown word strategy: ";
+  cerr << "Unknown word strategy: ";
   if (unk_strategy == 1) {
-    cout << "stochastic replacement of hapax legomena\n";
-		cout << "unk_prob: " << p_unk << endl;
+    cerr << "stochastic replacement of hapax legomena\n";
+		cerr << "unk_prob: " << p_unk << endl;
   } else {
     abort();
   }
-	cout << "====================" << endl;
+	cerr << "====================" << endl;
 	
 	// dynet build model
 	dynet::initialize(argc, argv, false);

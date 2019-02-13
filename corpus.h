@@ -16,7 +16,7 @@ namespace treebank {
 template <typename T>
 ostream& operator<< (ostream& os, const vector<T>& vec) {
 	for (const T& x: vec)
-		cout << x << ", ";
+		cerr << x << ", ";
 	return os;
 }
 
@@ -102,7 +102,7 @@ public:
 	// to support operator << 
 	friend ostream& operator << (ostream &os, const Vocab& v) {
 		assert (v.stoi.size() == v.itos.size());
-		cout << "vocab's size is " << v.stoi.size() << endl;
+		cerr << "vocab's size is " << v.stoi.size() << endl;
 		
 		bool large = false; unsigned i = 0;
 		for (const auto& entry: v.stoi) {
@@ -110,11 +110,11 @@ public:
 				large = true;
 				break;
 			}
-			cout << entry.first << ": " << entry.second << endl; ++i;
+			cerr << entry.first << ": " << entry.second << endl; ++i;
 		}
 		
 		if (large) {
-			cout << "..." << endl;
+			cerr << "..." << endl;
 		}
 		return os;
 	}
@@ -213,7 +213,7 @@ public:
 			}
 		}
 		corpus_file.close();
-		cout << "Read in " << sents.size() << " sentences from " << file << endl;
+		cerr << "Read in " << sents.size() << " sentences from " << file << endl;
 	}
 	
 	void load_corpus_dev(vector<Sentence>& sents, const string& file) {

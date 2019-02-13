@@ -28,7 +28,7 @@ using namespace boost::gregorian;
 
 void InitCommandLine(int argc, char** argv, po::variables_map& conf) {
 	using namespace std;
-  // very typical function that uses side-effect, output to output parameter and returns nothing
+	// very typical function that uses side-effect, output to output parameter and returns nothing
 	po::options_description opts("Configuration options");
 	opts.add_options()
 		("training_data,T", po::value<string>(), "List of Transitions - Training corpus")
@@ -78,13 +78,22 @@ void InitCommandLine(int argc, char** argv, po::variables_map& conf) {
 	}
 }
 
-struct ParserBuilder{
+struct Result {
+	vector<unsigned> transitions;
+	Expression loss;
+	size_t num_prediction;
+	unsigned right;
+};
+
+struct ParserBuilder {
 	
 public:
 	bool use_pos;
 	bool use_pretrained;
 	double p_unk;
 	double p_dropout;
+	Vocab& form;
+	Vocab& transition;
 	LSTMBuilder stack_lstm; // (layers, input, hidden, trainer)
 	LSTMBuilder buffer_lstm;
 	LSTMBuilder action_lstm;
@@ -110,16 +119,18 @@ public:
 	Parameter p_abias;  // action bias
 	Parameter p_buffer_guard;  // end of buffer
 	Parameter p_stack_guard;  // end of stack
-	ParameterCollection* pc;  //
+	ParameterCollection& pc;  // parameter collection
   
 public:
-	explicit ParserBuilder(ParameterCollection& model, unsigned layers, unsigned lstm_input_dim,
-												 unsigned action_dim, unsigned action_size, unsigned input_dim, unsigned vocab_size, 
-												 double t_p_unk, double t_p_dropout, unsigned rel_dim, unsigned hidden_dim,
-												 bool t_use_pretrained, const unordered_map<unsigned, vector<float>>& pretrained,
+	explicit ParserBuilder(ParameterCollection& model, Vocab& t_form, Vocab& t_transition, 
+												 unsigned layers, unsigned lstm_input_dim, unsigned action_dim, unsigned action_size, 
+												 unsigned input_dim, unsigned vocab_size, double t_p_unk, double t_p_dropout, 
+												 unsigned rel_dim, unsigned hidden_dim, bool t_use_pretrained, 
+												 const unordered_map<unsigned, vector<float>>& pretrained,
 												 bool t_use_pos, unsigned pos_size, unsigned pos_dim) :
 			use_pos(t_use_pos), use_pretrained(t_use_pretrained), 
-			pc(&model), p_unk(t_p_unk),p_dropout(t_p_dropout),
+			pc(model), p_unk(t_p_unk),p_dropout(t_p_dropout),
+			form(t_form), transition(t_transition),
 			stack_lstm(layers, lstm_input_dim, hidden_dim, model),
 			buffer_lstm(layers, lstm_input_dim, hidden_dim, model),
 			action_lstm(layers, action_dim, hidden_dim, model) {
@@ -163,15 +174,14 @@ public:
 		} else if (a[0] == 'L') {
 			if (ssize > 3) return true;
 		} else if (a[0] == 'R') {
-			if ((ssize > 3) || (ssize == 3) && (bsize == 1)) return true;
+			if ((ssize > 3) || ((ssize == 3) && (bsize == 1))) return true;
 		}
 		return false;
 	}
 	
 	// take a vector of actions and return a parse tree (labeling of every
 	// word position with its head's position) heads & rels, inclu that for <root>
-	static tuple<vector<int>, vector<string>> compute_heads(unsigned sent_len, const vector<unsigned>& actions, 
-																														const Vocab& transition) {
+	tuple<vector<int>, vector<string>> compute_heads(unsigned sent_len, const vector<unsigned>& actions) {
 		vector<int> heads(sent_len, -1);
 		vector<string> rels(sent_len, "");
 
@@ -220,7 +230,7 @@ public:
 	}
 
 	static tuple<unsigned, unsigned> compute_correct(const vector<int>& ref, const vector<int>& hyp, 
-																									 const vector<string> rel_ref, const vector<string> rel_hyp,
+																									 const vector<string>& rel_ref, const vector<string>& rel_hyp,
 																									 unsigned len) {
 		unsigned correct_head = 0, correct_rel = 0;
 		for (unsigned i = 1; i < len; ++i) {
@@ -253,10 +263,10 @@ public:
 		cout << endl;
 	}
 
-	tuple<vector<unsigned>, Expression> log_prob_parser(ComputationGraph& hg, const vector<unsigned>& sent, 
-																											const vector<unsigned>& sent_pos, const vector<unsigned>& correct_actions,
-																											const Vocab& transition, const Vocab& form, double* right) {
+	Result log_prob_parser(ComputationGraph& hg, const vector<unsigned>& sent, 
+												 const vector<unsigned>& sent_pos, const vector<unsigned>& correct_actions) {
 		vector<unsigned> results;
+		unsigned right = 0;
 		const bool build_training_graph = correct_actions.size() > 0;
 		// set dropout and do unk replacement
 		vector<unsigned> tsent = sent; unsigned unk_id = form.stoi.at(Vocab::UNK);
@@ -370,7 +380,7 @@ public:
 			unsigned action = best_a;
 			if (build_training_graph) {  // if we have reference actions (for training) use the reference action
 				action = correct_actions[action_count];
-				if (best_a == action) { (*right)++; }
+				if (best_a == action) { ++right; }
 			}
 			++action_count;
 			log_probs.push_back(pick(adiste, action));
@@ -454,28 +464,27 @@ public:
 		assert(bufferi.size() == 1);
 		Expression tot_neglogprob = -sum(log_probs);
 		assert(tot_neglogprob.pg != nullptr);
-		return make_tuple(results, tot_neglogprob);
+		return Result{results, tot_neglogprob, correct_actions.size(), right};
 	}
 
 	void train(const vector<Sentence>& train_sentences, const vector<Sentence>& dev_sentences, 
-						 const vector<Sentence>& test_sentences, const Vocab& form, const Vocab& transition,
-						 unsigned epoch, double lr, unsigned status_every_i_iterations,
-						 bool resume, string param, string trainer_state) {
+						 const vector<Sentence>& test_sentences, unsigned epoch, double lr, 
+						 unsigned status_every_i_iterations, bool resume, string param, string trainer_state) {
 		// load parameter collection
 		if (resume && param.size()) {
 			TextFileLoader l(param);
-			l.populate(*pc);
+			l.populate(pc);
 		}
 		
 		// load trainer state
-		SimpleSGDTrainer trainer(*pc, lr);
+		SimpleSGDTrainer trainer(pc, lr);
 		if (resume && trainer_state.size()) {
 			ifstream is(trainer_state);
 			trainer.populate(is);
 		}
 		
 		// stat
-		unsigned trs = 0; double right = 0; double llh; //clear every status for output
+		unsigned trs = 0; unsigned right = 0; double llh; //clear every status for output
 		int iter = 0; unsigned tot_seen = 0; // always incremented
 		unsigned sid = 0; // sentence id, clear every epoch
 		double best_uas = 0, best_las = 0;
@@ -488,9 +497,9 @@ public:
 		while (tot_seen / train_sentences.size() < epoch) {
 			if (sid == train_sentences.size()) {
 				double uas, las;
-				tie(uas, las) = test(dev_sentences, form, transition, status_every_i_iterations, false, string(), false);
+				tie(uas, las) = test(dev_sentences, status_every_i_iterations, false, string(), false);
 				if (uas > best_uas) {
-					TextFileSaver s(param); s.save(*pc);
+					TextFileSaver s(param); s.save(pc);
 					ofstream os(trainer_state); trainer.save(os);
 				}
 				random_shuffle(ids.begin(), ids.end()); sid = 0; trainer.learning_rate *= 0.9;
@@ -502,29 +511,28 @@ public:
 				cerr << "update #" << iter << " (epoch " << (double(tot_seen) / train_sentences.size()) 
 					<< " |time=" << time_now << ")\tllh: " << llh 
 					<<" ppl: " << exp(llh / trs) 
-					<< " err: " << (trs - right) / trs << endl;
+					<< " err: " << double(trs - right) / trs << endl;
 				llh = trs = right = 0;
 			}
 
 			ComputationGraph hg;
 			const Sentence& sent = train_sentences[ids[sid]];
-			vector<unsigned> results; Expression losse;
-			tie(results, losse)= log_prob_parser(hg, sent.formi, sent.posi, sent.transitionsi, transition, form, &right);
-			double loss = as_scalar(hg.forward(losse));
-			hg.backward(losse); trainer.update();
-			++sid; ++tot_seen; ++iter; trs += sent.transitions.size(); llh += loss;
+			Result result = log_prob_parser(hg, sent.formi, sent.posi, sent.transitionsi);
+			double loss = as_scalar(hg.forward(result.loss));
+			hg.backward(result.loss); trainer.update();
+			++sid; ++tot_seen; ++iter; trs += result.num_prediction; llh += loss; right += result.right;
 		}
 		
 		// final test on test Setup
-		test(test_sentences, form, transition, status_every_i_iterations, true, param, true);
+		test(test_sentences, status_every_i_iterations, true, param, true);
 	}
 	
-	tuple<double, double> test(const vector<Sentence>& test_sentences, const Vocab& form, const Vocab& transition,
-						unsigned status_every_i_iterations, bool resume, string param, bool output) {
+	tuple<double, double> test(const vector<Sentence>& test_sentences, unsigned status_every_i_iterations, 
+														 bool resume, string param, bool output) {
 		// load parameter collection
 		if (resume && param.size()) {
 			TextFileLoader l(param);
-			l.populate(*pc);
+			l.populate(pc);
 		}
 		
 		//stat
@@ -536,12 +544,11 @@ public:
 			if ((!output) && (i % 200 == 0))
 				cerr << i << "/" << test_sentences.size() << endl;
 			const Sentence& sent = test_sentences[i];
-			vector<unsigned> results; Expression losse;
-			tie(results, losse) = log_prob_parser(hg, sent.formi, sent.posi, vector<unsigned>(), transition, form, &right);
-			double loss = as_scalar(hg.forward(losse));
+			Result result = log_prob_parser(hg, sent.formi, sent.posi, vector<unsigned>());
+			double loss = as_scalar(hg.forward(result.loss));
 			// compute heads and 
 			vector<int> hyp; vector<string> rels_hyp;
-			tie(hyp, rels_hyp) = compute_heads(sent.form.size(), results, transition);
+			tie(hyp, rels_hyp) = compute_heads(sent.form.size(), result.transitions);
 			unsigned h = 0, r = 0;
 			tie(h, r) = compute_correct(sent.head, hyp, sent.deprel, rels_hyp, sent.form.size());
 			correct_head += h; correct_rel += r; tot_tokens += sent.form.size() - 1;
@@ -669,11 +676,11 @@ int main(int argc, char** argv) {
 	// dynet build model
 	dynet::initialize(argc, argv, false);
 	ParameterCollection model;
-	ParserBuilder parser(model, layers, lstm_input_dim, action_dim, action_size, input_dim, vocab_size, p_unk, p_dropout,
-											 rel_dim, hidden_dim, use_pretrained, pretrained, use_pos, pos_size, pos_dim);
+	ParserBuilder parser(model, corpus.form, corpus.transition, layers, lstm_input_dim, action_dim, 
+											 action_size, input_dim, vocab_size, p_unk, p_dropout, rel_dim, hidden_dim,
+											 use_pretrained, pretrained, use_pos, pos_size, pos_dim);
 	parser.train(corpus.train_sentences, corpus.dev_sentences, 
-							 corpus.test_sentences, corpus.form, corpus.transition,
-							 epoch, lr, status_every_i_iterations,
+							 corpus.test_sentences, epoch, lr, status_every_i_iterations,
 							 resume, param, trainer_state);
 
 	return 0;

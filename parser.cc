@@ -167,14 +167,12 @@ public:
 		}
 	}
 
-	// LEGAL FUNCTION
-	static bool IsActionFeasible(const string& a, unsigned bsize, unsigned ssize, const vector<int>& stacki) {
-		if (a[1]=='w') {
-			if ((ssize > 3) && (stacki[stacki.size()-2] < stacki[stacki.size()-1])) return true;
-		} else if (a[0] == 'S' && a[1]=='h') {
+	// LEGAL FUNCTION for hybrid
+	static bool IsActionFeasible(const string& a, unsigned bsize, unsigned ssize) {
+		if (a[0] == 'S') {
 			if (bsize > 1) return true;
 		} else if (a[0] == 'L') {
-			if (ssize > 3) return true;
+			if (bsize > 1 && ssize > 3) return true;
 		} else if (a[0] == 'R') {
 			if ((ssize > 3) || ((ssize == 3) && (bsize == 1))) return true;
 		}
@@ -359,7 +357,7 @@ public:
 			// get list of possible actions for the current parser state
 			vector<unsigned> current_valid_actions;
 			for (const auto& action: transition.stoi)
-				if (IsActionFeasible(action.first, buffer.size(), stack.size(), stacki))
+				if (IsActionFeasible(action.first, buffer.size(), stack.size()))
 					current_valid_actions.push_back(action.second);
 
 			// p_t = pbias + S * slstm + B * blstm + A * almst
@@ -409,44 +407,14 @@ public:
 				buffer_lstm.rewind_one_step();
 				stacki.push_back(bufferi.back());
 				bufferi.pop_back();
-			} else if (ac=='S' && ac2=='w'){ //SWAP --- Miguel
-				assert(stack.size() > 3); // dummy symbol and root symbol means > 3 (not >= 3)
-
-				Expression toki, tokj;
-				unsigned ii = 0, jj = 0;
-				tokj=stack.back();
-				jj=stacki.back();
-				stack.pop_back();
-				stacki.pop_back();
-
-				toki=stack.back();
-				ii=stacki.back();
-				stack.pop_back();
-				stacki.pop_back();
-
-				buffer.push_back(toki);
-				bufferi.push_back(ii);
-
-				stack_lstm.rewind_one_step();
-				stack_lstm.rewind_one_step();
-
-				buffer_lstm.add_input(buffer.back());
-
-				stack.push_back(tokj);
-				stacki.push_back(jj);
-
-				stack_lstm.add_input(stack.back());
-			} else { // LEFT or RIGHT
+			} else if (ac == 'R') { // LEFT or RIGHT
 				assert(stack.size() > 2); // dummy symbol means > 2 (not >= 2)
-				assert(ac == 'L' || ac == 'R');
 				Expression dep, head;
 				unsigned depi = 0, headi = 0;
-				(ac == 'R' ? dep : head) = stack.back();
-				(ac == 'R' ? depi : headi) = stacki.back();
+				dep = stack.back(); depi = stacki.back();
 				stack.pop_back();
 				stacki.pop_back();
-				(ac == 'R' ? head : dep) = stack.back();
-				(ac == 'R' ? headi : depi) = stacki.back();
+				head = stack.back(); headi = stacki.back();
 				stack.pop_back();
 				stacki.pop_back();
 				if (headi == 0) rootword = form.itos.at(sent[depi]);
@@ -458,6 +426,23 @@ public:
 				stack_lstm.add_input(nlcomposed);
 				stack.push_back(nlcomposed);
 				stacki.push_back(headi);
+			} else {
+				assert(ac == 'L');
+				assert(stack.size() > 2 && buffer.size() > 1);
+				Expression dep = stack.back();
+				unsigned depi = stacki.back();
+				stack.pop_back(); stacki.pop_back();
+				Expression head = buffer.back();
+				unsigned headi = bufferi.back();
+				buffer.pop_back(); bufferi.pop_back();
+				// composed = cbias + H * head + D * dep + R * relation
+				Expression composed = affine_transform({cbias, H, head, D, dep, R, relation});
+				Expression nlcomposed = tanh(composed);
+				stack_lstm.rewind_one_step();
+				stack_lstm.rewind_one_step();
+				buffer_lstm.add_input(nlcomposed);
+				buffer.push_back(nlcomposed);
+				bufferi.push_back(headi);
 			}
 		}
 		assert(stack.size() == 2); // guard symbol, root
@@ -727,7 +712,7 @@ int main(int argc, char** argv) {
 		<< "rel_dim: " << rel_dim << endl
 		<< "hidden_dim: "  << hidden_dim << endl
 		<< "use_pos_tags: " << use_pos << endl
-		<< "resume: " << resume << endl
+		<< boolalpha << "resume: " << resume << endl
 		<< "param path: " << param << endl
 		<< "trainer state: " << trainer_state << endl;
 	if (use_pos) 

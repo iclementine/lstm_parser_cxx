@@ -16,12 +16,14 @@
 #include <dynet/lstm.h>
 #include <dynet/training.h>
 #include <dynet/io.h>
+#include <dynet/mp.h>
 
 #include "corpus.h"
 
 namespace po = boost::program_options;
 using namespace std;
 using namespace dynet;
+using namespace dynet::mp;
 using namespace treebank;
 using namespace boost::posix_time;
 using namespace boost::gregorian;
@@ -565,6 +567,78 @@ public:
 	}
 };
 
+struct Stat {
+public:
+	size_t num_prediction = 0;
+	unsigned right = 0;
+	double tot_loss = 0;
+	size_t num_token = 0;
+	unsigned right_head = 0;
+	unsigned right_rel = 0;
+	
+public:
+	Stat() {}
+	Stat(size_t t_num_pred, unsigned t_right, double t_loss, 
+			 size_t t_num_token, unsigned t_head, unsigned t_rel):
+		num_prediction(t_num_pred), right(t_right), tot_loss(t_loss),
+		num_token(t_num_token), right_head(t_head), right_rel(t_rel) {}
+	
+	Stat& operator+=(const Stat& rhs) {
+		num_prediction += rhs.num_prediction;
+		right += rhs.right;
+		tot_loss += rhs.tot_loss;
+		num_token += rhs.num_token;
+		right_head += rhs.right_head;
+		right_rel += rhs.right_rel;
+		return *this;
+	}
+	
+	friend Stat operator+(Stat lhs, const Stat& rhs) {
+		lhs += rhs;
+		return lhs;
+	}
+	
+	bool operator<(const Stat& rhs) {
+		// FIX: smaller loss translates into better uas or las
+    return double(right_head) / num_token > double(rhs.right_head) / rhs.num_token;
+  }
+	
+	friend ostream& operator<<(ostream& stream, const Stat& stat) {
+		stream << "ppl: " << exp(double(stat.tot_loss) / stat.num_prediction) 
+			<< "\tuas: " << double(stat.right_head) / stat.num_token 
+			<< "\tlas: " << double(stat.right_rel) / stat.num_token;
+		return stream;
+	}
+};
+
+class Learner : public ILearner<Sentence, Stat> {
+public:
+  explicit Learner(ParserBuilder& t_parser, unsigned data_size) : parser(t_parser) {}
+  ~Learner() {}
+
+  Stat LearnFromDatum(const Sentence& sent, bool learn) {
+    ComputationGraph hg;
+    Result result = parser.log_prob_parser(hg, sent.formi, sent.posi, learn ? sent.transitionsi : vector<unsigned>());
+    double loss = as_scalar(hg.forward(result.loss));
+		unsigned h = 0, r = 0;
+    if (learn) {
+      hg.backward(result.loss);
+    } else {
+			vector<int> hyp; vector<string> rels_hyp;
+			tie(hyp, rels_hyp) = parser.compute_heads(sent.form.size(), result.transitions);
+			tie(h, r) = parser.compute_correct(sent.head, hyp, sent.deprel, rels_hyp, sent.form.size());
+		}
+    return Stat{sent.transitionsi.size(), result.right, loss, sent.formi.size() - 1, h, r};
+  }
+
+  void SaveModel() {
+		TextFileSaver s("lstm-parser.model"); s.save(parser.pc);
+	}
+
+private:
+  ParserBuilder& parser;
+};
+
 int main(int argc, char** argv) {
 	
 	// parse command line args and prepare args for ParserBuilder
@@ -674,14 +748,18 @@ int main(int argc, char** argv) {
 	cerr << "====================" << endl;
 	
 	// dynet build model
-	dynet::initialize(argc, argv, false);
+	dynet::initialize(argc, argv, true);
 	ParameterCollection model;
 	ParserBuilder parser(model, corpus.form, corpus.transition, layers, lstm_input_dim, action_dim, 
 											 action_size, input_dim, vocab_size, p_unk, p_dropout, rel_dim, hidden_dim,
 											 use_pretrained, pretrained, use_pos, pos_size, pos_dim);
-	parser.train(corpus.train_sentences, corpus.dev_sentences, 
-							 corpus.test_sentences, epoch, lr, status_every_i_iterations,
-							 resume, param, trainer_state);
-
+// 	parser.train(corpus.train_sentences, corpus.dev_sentences, 
+// 							 corpus.test_sentences, epoch, lr, status_every_i_iterations,
+// 							 resume, param, trainer_state);
+	SimpleSGDTrainer sgd(model, lr);
+	Learner learner(parser, corpus.train_sentences.size());
+	run_multi_process(4, &learner, &sgd, corpus.train_sentences, corpus.dev_sentences, epoch, corpus.train_sentences.size(), status_every_i_iterations);
+	parser.test(corpus.test_sentences, status_every_i_iterations, true, "lstm-parser.model", true);
+	
 	return 0;
 }

@@ -168,13 +168,31 @@ public:
 	}
 
 	// LEGAL FUNCTION for hybrid
-	static bool IsActionFeasible(const string& a, unsigned bsize, unsigned ssize) {
-		if (a[0] == 'S') {
-			if (bsize > 1) return true;
-		} else if (a[0] == 'L') {
-			if (bsize > 1 && ssize > 2) return true;
-		} else if (a[0] == 'R') {
-			if ((ssize > 3) || ((ssize == 3) && (bsize == 1))) return true;
+	static bool IsActionFeasible(const string& a, unsigned bsize, unsigned ssize, 
+															 const vector<int>& stacki, const map<int, int>& arcs,
+															 bool ste) {
+		if (!ste) {
+			if (a[0] == 'S' && bsize > 2) return true;
+			if (a[0] == 'R' && a[1] == 'e' 
+				&& (ssize > 3 || (ssize == 3 && bsize == 1)) 
+				&& (arcs.find(stacki.back()) != arcs.end())) return true;
+			if (a[0] == 'L' && bsize > 1 && ssize > 2 
+				&& (arcs.find(stacki.back()) == arcs.end())) return true;
+			if (a[0] == 'R' && a[1] == 'i') {
+				bool left_possible = bsize > 1 && ssize > 2 && (arcs.find(stacki.back()) == arcs.end());
+				if (bsize > 2 || (bsize == 2 && !left_possible))
+					return true;
+			}
+		} else {
+			if (a[0] =='R' && a[1] == 'e'
+				&& bsize == 1 && ssize > 2 && arcs.find(stacki.back()) != arcs.end()) return true;
+			if (a[0] =='U'
+				&& bsize == 1 && ssize > 2 && arcs.find(stacki.back()) == arcs.end()) return true;
+			if (a[0] =='R' && a[1] =='i' && bsize > 1) return true;
+			if (a[0] == 'L' 
+				&& bsize > 1 && ssize > 2 && arcs.find(stacki.back()) == arcs.end()) return true;
+			if (a[0] == 'R' && a[1] =='e' 
+				&& bsize > 1 && ssize > 2 && arcs.find(stacki.back()) != arcs.end()) return true;
 		}
 		return false;
 	}
@@ -194,22 +212,40 @@ public:
 		for (auto action: actions) { // loop over transitions for sentence
 			const string& actionString=transition.itos.at(action);
 			const char ac = actionString[0];
+			const char ac2 = actionString[1];
 			if (ac =='S') {  // SHIFT
 				assert(bufferi.size() > 1); // dummy symbol means > 1 (not >= 1)
 				stacki.push_back(bufferi.back());
 				bufferi.pop_back();
-			} else { // LEFT or RIGHT
-				assert(stacki.size() > 2); // dummy symbol means > 2 (not >= 2)
-				assert(ac == 'L' || ac == 'R');
+			} else if (ac == 'L'){ // LEFT 
+				assert(stacki.size() > 2 && bufferi.size() > 1); // dummy symbol means > 2 (not >= 2)
 				
 				size_t first_char_in_rel = actionString.find('-') + 1; 
 				string hyp_rel = actionString.substr(first_char_in_rel);
 				unsigned depi = 0, headi = 0;
 				depi  = stacki.back();
 				stacki.pop_back();
-				headi = ac == 'R' ? stacki.back() : bufferi.back();
+				headi = bufferi.back();
 				heads[depi] = headi;
 				rels[depi] = hyp_rel;
+			} else if (ac == 'R' && ac2 =='i') {
+				assert (stacki.size() > 1 && bufferi.size() > 1);
+				size_t first_char_in_rel = actionString.find('-') + 1; 
+				string hyp_rel = actionString.substr(first_char_in_rel);
+				unsigned depi = 0, headi = 0;
+				headi  = stacki.back();
+				depi = bufferi.back();
+				stacki.push_back(depi);
+				bufferi.pop_back();
+				heads[depi] = headi;
+				rels[depi] = hyp_rel;
+			} else if (ac =='R' && ac2 == 'e'){
+				assert(stacki.size() > 2);
+				stacki.pop_back();
+			} else {
+				assert (ac == 'U' && bufferi.size() == 1 && stacki.size()> 2);
+				bufferi.push_back(stacki.back());
+				stacki.pop_back();
 			}
 		}
 		assert(bufferi.size() == 1);
@@ -336,6 +372,8 @@ public:
 		buffer_lstm.rewind_one_step();
 		stacki.push_back(bufferi.back());
 		bufferi.pop_back();
+		bool seen_the_end = false; // special for arc eager
+		map<int, int> arcs{}; // used by arc eager
 		
 		// End of "Setup" code, now start the main loop
 		vector<Expression> log_probs;
@@ -345,7 +383,7 @@ public:
 			// get list of possible actions for the current parser state
 			vector<unsigned> current_valid_actions;
 			for (const auto& action: transition.stoi)
-				if (IsActionFeasible(action.first, buffer.size(), stack.size()))
+				if (IsActionFeasible(action.first, buffer.size(), stack.size(), stacki, arcs, seen_the_end))
 					current_valid_actions.push_back(action.second);
 			assert(current_valid_actions.size() > 0);
 
@@ -396,13 +434,16 @@ public:
 				buffer_lstm.rewind_one_step();
 				stacki.push_back(bufferi.back());
 				bufferi.pop_back();
-			} else if (ac == 'R') { // LEFT or RIGHT
-				assert(stack.size() > 3 || (stack.size() == 3 && buffer.size() == 1)); // dummy symbol means > 2 (not >= 2)
+				if (bufferi.size() == 0)
+					seen_the_end = true;
+			} else if (ac == 'R' && ac2 =='i') { //RIGHT
+				// mind that this doe not gurantee single child of <root>
+				assert(stack.size() > 1); // dummy symbol means > 2 (not >= 2)
 				Expression dep, head;
 				unsigned depi = 0, headi = 0;
-				dep = stack.back(); depi = stacki.back();
-				stack.pop_back();
-				stacki.pop_back();
+				dep = buffer.back(); depi = bufferi.back();
+				buffer.pop_back();
+				bufferi.pop_back();
 				head = stack.back(); headi = stacki.back();
 				stack.pop_back();
 				stacki.pop_back();
@@ -411,12 +452,16 @@ public:
 				Expression composed = affine_transform({cbias, H, head, D, dep, R, relation});
 				Expression nlcomposed = tanh(composed);
 				stack_lstm.rewind_one_step();
-				stack_lstm.rewind_one_step();
 				stack_lstm.add_input(nlcomposed);
 				stack.push_back(nlcomposed);
 				stacki.push_back(headi);
-			} else {
-				assert(ac == 'L');
+				stack_lstm.add_input(dep);
+				stack.push_back(dep);
+				stacki.push_back(depi);
+				arcs[depi] = headi;
+				if (bufferi.size() == 0)
+					seen_the_end = true;
+			} else if (ac == 'L'){
 				assert(stack.size() > 2 && buffer.size() > 1);
 				Expression dep = stack.back();
 				unsigned depi = stacki.back();
@@ -432,6 +477,20 @@ public:
 				buffer_lstm.add_input(nlcomposed);
 				buffer.push_back(nlcomposed);
 				bufferi.push_back(headi);
+				arcs[depi] = headi;
+			} else if (ac == 'R' && ac2 == 'e') {
+				assert(stack.size() > 2 && (arcs.find(stacki.back()) != arcs.end()));
+				stack_lstm.rewind_one_step();
+				stack.pop_back();
+				stacki.pop_back();
+			} else {
+				assert (ac =='U' && buffer.size() == 1);
+				buffer.push_back(stack.back());
+				buffer_lstm.add_input(stack.back());
+				stack.pop_back();
+				stack_lstm.rewind_one_step();
+				bufferi.push_back(stacki.back());
+				stacki.pop_back();
 			}
 		}
 		assert(stack.size() == 2); // guard symbol, root

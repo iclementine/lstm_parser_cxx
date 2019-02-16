@@ -12,11 +12,11 @@
 
 namespace treebank {
 	using namespace std;
-	
-template <typename T>
-ostream& operator<< (ostream& os, const vector<T>& vec) {
-	for (const T& x: vec)
-		cerr << x << ", ";
+
+template <typename K, typename V>
+ostream& operator<< (ostream& os, const map<K, V>& vec) {
+	for (const auto& p: vec)
+		cerr << p.first << "\t:\t"<< p.second << ",\n";
 	return os;
 }
 
@@ -118,7 +118,6 @@ public:
 		}
 		return os;
 	}
-	
 };
 
 struct Corpus {

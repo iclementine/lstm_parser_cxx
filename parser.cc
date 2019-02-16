@@ -167,7 +167,7 @@ public:
 		}
 	}
 
-	// LEGAL FUNCTION for hybrid
+	// LEGAL FUNCTION for eager
 	static bool IsActionFeasible(const string& a, unsigned bsize, unsigned ssize, 
 															 const vector<int>& stacki, const map<int, int>& arcs,
 															 bool ste) {
@@ -219,7 +219,6 @@ public:
 				bufferi.pop_back();
 			} else if (ac == 'L'){ // LEFT 
 				assert(stacki.size() > 2 && bufferi.size() > 1); // dummy symbol means > 2 (not >= 2)
-				
 				size_t first_char_in_rel = actionString.find('-') + 1; 
 				string hyp_rel = actionString.substr(first_char_in_rel);
 				unsigned depi = 0, headi = 0;
@@ -385,6 +384,14 @@ public:
 			for (const auto& action: transition.stoi)
 				if (IsActionFeasible(action.first, buffer.size(), stack.size(), stacki, arcs, seen_the_end))
 					current_valid_actions.push_back(action.second);
+			if (current_valid_actions.size() == 0) {
+				cerr << "stack_size: " << stack.size()
+					<< "\tbuffer_size: " << buffer.size() << endl
+					<< "seen the end: " << seen_the_end << endl
+					<< stacki << endl
+					<< bufferi << endl
+					<< arcs << endl;
+			}
 			assert(current_valid_actions.size() > 0);
 
 			// p_t = pbias + S * slstm + B * blstm + A * almst
@@ -425,7 +432,6 @@ public:
 			const char ac = actionString[0];
 			const char ac2 = actionString[1];
 
-
 			if (ac =='S') {  // SHIFT
 				assert(buffer.size() > 1); // dummy symbol means > 1 (not >= 1)
 				stack.push_back(buffer.back());
@@ -434,11 +440,11 @@ public:
 				buffer_lstm.rewind_one_step();
 				stacki.push_back(bufferi.back());
 				bufferi.pop_back();
-				if (bufferi.size() == 0)
+				if (bufferi.size() == 1)
 					seen_the_end = true;
 			} else if (ac == 'R' && ac2 =='i') { //RIGHT
 				// mind that this doe not gurantee single child of <root>
-				assert(stack.size() > 1); // dummy symbol means > 2 (not >= 2)
+				assert(stack.size() > 1 && buffer.size() > 1); // dummy symbol means > 2 (not >= 2)
 				Expression dep, head;
 				unsigned depi = 0, headi = 0;
 				dep = buffer.back(); depi = bufferi.back();
@@ -451,6 +457,7 @@ public:
 				// composed = cbias + H * head + D * dep + R * relation
 				Expression composed = affine_transform({cbias, H, head, D, dep, R, relation});
 				Expression nlcomposed = tanh(composed);
+				buffer_lstm.rewind_one_step();
 				stack_lstm.rewind_one_step();
 				stack_lstm.add_input(nlcomposed);
 				stack.push_back(nlcomposed);
@@ -459,7 +466,7 @@ public:
 				stack.push_back(dep);
 				stacki.push_back(depi);
 				arcs[depi] = headi;
-				if (bufferi.size() == 0)
+				if (bufferi.size() == 1)
 					seen_the_end = true;
 			} else if (ac == 'L'){
 				assert(stack.size() > 2 && buffer.size() > 1);
@@ -486,10 +493,10 @@ public:
 			} else {
 				assert (ac =='U' && buffer.size() == 1);
 				buffer.push_back(stack.back());
-				buffer_lstm.add_input(stack.back());
-				stack.pop_back();
-				stack_lstm.rewind_one_step();
 				bufferi.push_back(stacki.back());
+				buffer_lstm.add_input(stack.back());
+				stack_lstm.rewind_one_step();
+				stack.pop_back();
 				stacki.pop_back();
 			}
 		}
@@ -691,6 +698,11 @@ int main(int argc, char** argv) {
 // 	cerr << corpus.form << endl << corpus.pos << endl 
 // 		<< corpus.deprel << endl << corpus.transition << endl
 // 		<< corpus.chars << endl;
+	
+	// special processing for arc-eager with tree constraint
+	corpus.transition.frozen = false;
+	corpus.transition.get_or_add("Unshift");
+	corpus.transition.frozen = true;
 	
 	const auto epoch = conf["epoches"].as<unsigned>();
 	const auto lr = conf["init_learning_rate"].as<double>();

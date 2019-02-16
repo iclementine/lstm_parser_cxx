@@ -4,13 +4,20 @@
 using namespace std;
 using namespace treebank;
 
+template <typename T>
+ostream& operator<< (ostream& os, const vector<T>& vec) {
+	for (const T& x: vec)
+		cerr << x << ", ";
+	return os;
+}
+
 int main(){
 	cout << "hello world!" << endl;
 	Corpus corpus;
 
-	corpus.load_corpus(corpus.train_sentences, "../experiment/arc-hybrid/train-arc-hybrid.txt");
-	corpus.load_corpus_dev(corpus.dev_sentences, "../experiment/arc-hybrid/dev-arc-hybrid.txt");
-	corpus.load_corpus_dev(corpus.test_sentences, "../experiment/arc-hybrid/test-arc-hybrid.txt");
+	corpus.load_corpus(corpus.train_sentences, "../experiment/arc-eager-reduce/train-arc-eager-reduce.txt");
+	corpus.load_corpus_dev(corpus.dev_sentences, "../experiment/arc-eager-reduce/dev-arc-eager-reduce.txt");
+	corpus.load_corpus_dev(corpus.test_sentences, "../experiment/arc-eager-reduce/test-arc-eager-reduce.txt");
 	cout << corpus.form << endl << corpus.pos << endl 
 		<< corpus.deprel << endl << corpus.transition << endl
 		<< corpus.chars << endl;

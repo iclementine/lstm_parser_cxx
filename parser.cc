@@ -172,7 +172,7 @@ public:
 		if (a[0] == 'S') {
 			if (bsize > 1) return true;
 		} else if (a[0] == 'L') {
-			if (bsize > 1 && ssize > 3) return true;
+			if (bsize > 1 && ssize > 2) return true;
 		} else if (a[0] == 'R') {
 			if ((ssize > 3) || ((ssize == 3) && (bsize == 1))) return true;
 		}
@@ -194,20 +194,10 @@ public:
 		for (auto action: actions) { // loop over transitions for sentence
 			const string& actionString=transition.itos.at(action);
 			const char ac = actionString[0];
-			const char ac2 = actionString[1];
-			if (ac =='S' && ac2=='h') {  // SHIFT
+			if (ac =='S') {  // SHIFT
 				assert(bufferi.size() > 1); // dummy symbol means > 1 (not >= 1)
 				stacki.push_back(bufferi.back());
 				bufferi.pop_back();
-			} else if (ac=='S' && ac2=='w') { // SWAP
-				assert(stacki.size() > 3);
-				unsigned ii = 0, jj = 0;
-				jj = stacki.back();
-				stacki.pop_back();
-				ii = stacki.back();
-				stacki.pop_back();
-				bufferi.push_back(ii);
-				stacki.push_back(jj);
 			} else { // LEFT or RIGHT
 				assert(stacki.size() > 2); // dummy symbol means > 2 (not >= 2)
 				assert(ac == 'L' || ac == 'R');
@@ -215,11 +205,9 @@ public:
 				size_t first_char_in_rel = actionString.find('-') + 1; 
 				string hyp_rel = actionString.substr(first_char_in_rel);
 				unsigned depi = 0, headi = 0;
-				(ac == 'R' ? depi : headi) = stacki.back();
+				depi  = stacki.back();
 				stacki.pop_back();
-				(ac == 'R' ? headi : depi) = stacki.back();
-				stacki.pop_back();
-				stacki.push_back(headi);
+				headi = ac == 'R' ? stacki.back() : bufferi.back();
 				heads[depi] = headi;
 				rels[depi] = hyp_rel;
 			}
@@ -359,6 +347,7 @@ public:
 			for (const auto& action: transition.stoi)
 				if (IsActionFeasible(action.first, buffer.size(), stack.size()))
 					current_valid_actions.push_back(action.second);
+			assert(current_valid_actions.size() > 0);
 
 			// p_t = pbias + S * slstm + B * blstm + A * almst
 			Expression p_t = affine_transform({pbias, S, stack_lstm.back(), B, buffer_lstm.back(), A, action_lstm.back()});
@@ -399,7 +388,7 @@ public:
 			const char ac2 = actionString[1];
 
 
-			if (ac =='S' && ac2=='h') {  // SHIFT
+			if (ac =='S') {  // SHIFT
 				assert(buffer.size() > 1); // dummy symbol means > 1 (not >= 1)
 				stack.push_back(buffer.back());
 				stack_lstm.add_input(buffer.back());
@@ -408,7 +397,7 @@ public:
 				stacki.push_back(bufferi.back());
 				bufferi.pop_back();
 			} else if (ac == 'R') { // LEFT or RIGHT
-				assert(stack.size() > 2); // dummy symbol means > 2 (not >= 2)
+				assert(stack.size() > 3 || (stack.size() == 3 && buffer.size() == 1)); // dummy symbol means > 2 (not >= 2)
 				Expression dep, head;
 				unsigned depi = 0, headi = 0;
 				dep = stack.back(); depi = stacki.back();
@@ -439,7 +428,7 @@ public:
 				Expression composed = affine_transform({cbias, H, head, D, dep, R, relation});
 				Expression nlcomposed = tanh(composed);
 				stack_lstm.rewind_one_step();
-				stack_lstm.rewind_one_step();
+				buffer_lstm.rewind_one_step();
 				buffer_lstm.add_input(nlcomposed);
 				buffer.push_back(nlcomposed);
 				bufferi.push_back(headi);
@@ -698,6 +687,7 @@ int main(int argc, char** argv) {
 	
 	// print conf 
 	cerr << "======Configuration is=====" << endl
+		<< boolalpha
 		<< "training_data: " << training_data << endl
 		<< "training epoches: " << epoch << endl
 		<< "init learning rate: " << lr << endl 
@@ -712,7 +702,7 @@ int main(int argc, char** argv) {
 		<< "rel_dim: " << rel_dim << endl
 		<< "hidden_dim: "  << hidden_dim << endl
 		<< "use_pos_tags: " << use_pos << endl
-		<< boolalpha << "resume: " << resume << endl
+		<< "resume: " << resume << endl
 		<< "param path: " << param << endl
 		<< "trainer state: " << trainer_state << endl;
 	if (use_pos) 
@@ -738,12 +728,12 @@ int main(int argc, char** argv) {
 	ParserBuilder parser(model, corpus.form, corpus.transition, layers, lstm_input_dim, action_dim, 
 											 action_size, input_dim, vocab_size, p_unk, p_dropout, rel_dim, hidden_dim,
 											 use_pretrained, pretrained, use_pos, pos_size, pos_dim);
-// 	parser.train(corpus.train_sentences, corpus.dev_sentences, 
-// 							 corpus.test_sentences, epoch, lr, status_every_i_iterations,
-// 							 resume, param, trainer_state);
-	SimpleSGDTrainer sgd(model, lr);
-	Learner learner(parser, corpus.train_sentences.size());
-	run_multi_process(4, &learner, &sgd, corpus.train_sentences, corpus.dev_sentences, epoch, corpus.train_sentences.size(), status_every_i_iterations);
+	parser.train(corpus.train_sentences, corpus.dev_sentences, 
+							 corpus.test_sentences, epoch, lr, status_every_i_iterations,
+							 resume, param, trainer_state);
+// 	SimpleSGDTrainer sgd(model, lr);
+// 	Learner learner(parser, corpus.train_sentences.size());
+// 	run_multi_process(4, &learner, &sgd, corpus.train_sentences, corpus.dev_sentences, epoch, corpus.train_sentences.size(), status_every_i_iterations);
 	parser.test(corpus.test_sentences, status_every_i_iterations, true, "lstm-parser.model", true);
 	
 	return 0;

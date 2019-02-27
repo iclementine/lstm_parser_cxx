@@ -18,11 +18,13 @@
 #include <dynet/io.h>
 
 #include "corpus.h"
+#include "composor.h"
 
 namespace po = boost::program_options;
 using namespace std;
 using namespace dynet;
 using namespace treebank;
+using namespace Utils;
 using namespace boost::posix_time;
 using namespace boost::gregorian;
 
@@ -99,21 +101,12 @@ public:
 	LSTMBuilder action_lstm; // (layers, state_size, latent_state_rep, pc)
 	LookupParameter p_w; // word embeddings
 	LookupParameter p_t; // pretrained word embeddings (not updated)
-	// LookupParameter p_a; // input action embeddings
-	// LookupParameter p_r; // relation embeddings
 	LookupParameter p_p; // pos tag embeddings
-	// Parameter p_pbias; // parser state bias
-	// Parameter p_A; // action lstm to parser state
-	// Parameter p_B; // buffer lstm to parser state
-	// Parameter p_S; // stack lstm to parser state
-	Parameter p_H; // head matrix for composition function
-	Parameter p_D; // dependency matrix for composition function
-	Parameter p_R; // relation matrix for composition function
+	Composor composor;
 	Parameter p_w2l; // word to LSTM input
 	Parameter p_p2l; // POS to LSTM input
 	Parameter p_t2l; // pretrained word embeddings to LSTM input
 	Parameter p_ib; // LSTM input bias
-	Parameter p_cbias; // composition function bias
 	Parameter p_p2a;   // parser state to action
 	Parameter p_action_start;  // action bias
 	Parameter p_abias;  // action bias
@@ -134,20 +127,10 @@ public:
 			stack_lstm(layers, lstm_input_dim, hidden_dim, model),
 			buffer_lstm(layers, lstm_input_dim, hidden_dim, model),
 			action_lstm(layers, 2 * hidden_dim, hidden_dim, model),
-			pc(model) {
+			composor(model, lstm_input_dim), pc(model) {
 		p_w = model.add_lookup_parameters(vocab_size, {input_dim});
-		// p_a = model.add_lookup_parameters(action_size, {action_dim});
-		// p_r = model.add_lookup_parameters(action_size, {rel_dim});
-		// p_pbias = model.add_parameters({hidden_dim});
-		// p_A = model.add_parameters({hidden_dim, hidden_dim});
-		// p_B = model.add_parameters({hidden_dim, hidden_dim});
-		// p_S = model.add_parameters({hidden_dim, hidden_dim});
-		p_H = model.add_parameters({lstm_input_dim, lstm_input_dim});
-		p_D = model.add_parameters({lstm_input_dim, lstm_input_dim});
-		p_R = model.add_parameters({lstm_input_dim, action_size}); // changed here
 		p_w2l = model.add_parameters({lstm_input_dim, input_dim});
 		p_ib = model.add_parameters({lstm_input_dim});
-		p_cbias = model.add_parameters({lstm_input_dim});
 		p_p2a= model.add_parameters({action_size, hidden_dim});
 		p_action_start = model.add_parameters({hidden_dim}); // changed here
 		p_abias = model.add_parameters({action_size});
@@ -286,14 +269,7 @@ public:
 		buffer_lstm.start_new_sequence();
 		action_lstm.start_new_sequence();
 		// variables in the computation graph representing the parameters
-		// Expression pbias = parameter(hg, p_pbias);
-		Expression H = parameter(hg, p_H);
-		Expression D = parameter(hg, p_D);
-		Expression R = parameter(hg, p_R);
-		Expression cbias = parameter(hg, p_cbias);
-		// Expression S = parameter(hg, p_S);
-		// Expression B = parameter(hg, p_B);
-		// Expression A = parameter(hg, p_A);
+		composor.new_graph(hg);
 		Expression ib = parameter(hg, p_ib);
 		Expression w2l = parameter(hg, p_w2l);
 		Expression p2l;
@@ -453,8 +429,8 @@ public:
 				stack.pop_back();
 				stacki.pop_back();
 				if (headi == 0) rootword = form.itos.at(sent[depi]);
-				// composed = cbias + H * head + D * dep + R * relation
-				Expression composed = affine_transform({cbias, H, head, D, dep, R, r_t});
+				// composed = composor(h,d)
+				Expression composed = composor(head, dep);
 				Expression nlcomposed = tanh(composed);
 				stack_lstm.rewind_one_step();
 				stack_lstm.rewind_one_step();

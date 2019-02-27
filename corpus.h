@@ -62,8 +62,7 @@ public:
 	
 public:
 	explicit Vocab(vector<string> t_specials, bool t_use_freq):
-			specials(t_specials), 
-			use_freq(t_use_freq) {
+			use_freq(t_use_freq), specials(t_specials) {
 		if (specials.size()) {
 			if (use_freq) {
 				for (const string& s: specials) {

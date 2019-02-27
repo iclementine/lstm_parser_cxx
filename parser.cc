@@ -94,18 +94,18 @@ public:
 	double p_dropout;
 	Vocab& form;
 	Vocab& transition;
-	LSTMBuilder stack_lstm; // (layers, input, hidden, trainer)
+	LSTMBuilder stack_lstm; // (layers, input, hidden, pc)
 	LSTMBuilder buffer_lstm;
-	LSTMBuilder action_lstm;
+	LSTMBuilder action_lstm; // (layers, state_size, latent_state_rep, pc)
 	LookupParameter p_w; // word embeddings
 	LookupParameter p_t; // pretrained word embeddings (not updated)
-	LookupParameter p_a; // input action embeddings
-	LookupParameter p_r; // relation embeddings
+	// LookupParameter p_a; // input action embeddings
+	// LookupParameter p_r; // relation embeddings
 	LookupParameter p_p; // pos tag embeddings
-	Parameter p_pbias; // parser state bias
-	Parameter p_A; // action lstm to parser state
-	Parameter p_B; // buffer lstm to parser state
-	Parameter p_S; // stack lstm to parser state
+	// Parameter p_pbias; // parser state bias
+	// Parameter p_A; // action lstm to parser state
+	// Parameter p_B; // buffer lstm to parser state
+	// Parameter p_S; // stack lstm to parser state
 	Parameter p_H; // head matrix for composition function
 	Parameter p_D; // dependency matrix for composition function
 	Parameter p_R; // relation matrix for composition function
@@ -128,27 +128,28 @@ public:
 												 unsigned rel_dim, unsigned hidden_dim, bool t_use_pretrained, 
 												 const unordered_map<unsigned, vector<float>>& pretrained,
 												 bool t_use_pos, unsigned pos_size, unsigned pos_dim) :
-			use_pos(t_use_pos), use_pretrained(t_use_pretrained), 
-			pc(model), p_unk(t_p_unk),p_dropout(t_p_dropout),
+			use_pos(t_use_pos), use_pretrained(t_use_pretrained),
+			p_unk(t_p_unk),p_dropout(t_p_dropout),
 			form(t_form), transition(t_transition),
 			stack_lstm(layers, lstm_input_dim, hidden_dim, model),
 			buffer_lstm(layers, lstm_input_dim, hidden_dim, model),
-			action_lstm(layers, action_dim, hidden_dim, model) {
+			action_lstm(layers, 2 * hidden_dim, hidden_dim, model),
+			pc(model) {
 		p_w = model.add_lookup_parameters(vocab_size, {input_dim});
-		p_a = model.add_lookup_parameters(action_size, {action_dim});
-		p_r = model.add_lookup_parameters(action_size, {rel_dim});
-		p_pbias = model.add_parameters({hidden_dim});
-		p_A = model.add_parameters({hidden_dim, hidden_dim});
-		p_B = model.add_parameters({hidden_dim, hidden_dim});
-		p_S = model.add_parameters({hidden_dim, hidden_dim});
+		// p_a = model.add_lookup_parameters(action_size, {action_dim});
+		// p_r = model.add_lookup_parameters(action_size, {rel_dim});
+		// p_pbias = model.add_parameters({hidden_dim});
+		// p_A = model.add_parameters({hidden_dim, hidden_dim});
+		// p_B = model.add_parameters({hidden_dim, hidden_dim});
+		// p_S = model.add_parameters({hidden_dim, hidden_dim});
 		p_H = model.add_parameters({lstm_input_dim, lstm_input_dim});
 		p_D = model.add_parameters({lstm_input_dim, lstm_input_dim});
-		p_R = model.add_parameters({lstm_input_dim, rel_dim});
+		p_R = model.add_parameters({lstm_input_dim, hidden_dim}); // changed here
 		p_w2l = model.add_parameters({lstm_input_dim, input_dim});
 		p_ib = model.add_parameters({lstm_input_dim});
 		p_cbias = model.add_parameters({lstm_input_dim});
 		p_p2a= model.add_parameters({action_size, hidden_dim});
-		p_action_start = model.add_parameters({action_dim});
+		p_action_start = model.add_parameters({hidden_dim}); // changed here
 		p_abias = model.add_parameters({action_size});
 		p_buffer_guard = model.add_parameters({lstm_input_dim});
 		p_stack_guard = model.add_parameters({lstm_input_dim});
@@ -285,14 +286,14 @@ public:
 		buffer_lstm.start_new_sequence();
 		action_lstm.start_new_sequence();
 		// variables in the computation graph representing the parameters
-		Expression pbias = parameter(hg, p_pbias);
+		// Expression pbias = parameter(hg, p_pbias);
 		Expression H = parameter(hg, p_H);
 		Expression D = parameter(hg, p_D);
 		Expression R = parameter(hg, p_R);
 		Expression cbias = parameter(hg, p_cbias);
-		Expression S = parameter(hg, p_S);
-		Expression B = parameter(hg, p_B);
-		Expression A = parameter(hg, p_A);
+		// Expression S = parameter(hg, p_S);
+		// Expression B = parameter(hg, p_B);
+		// Expression A = parameter(hg, p_A);
 		Expression ib = parameter(hg, p_ib);
 		Expression w2l = parameter(hg, p_w2l);
 		Expression p2l;
@@ -303,9 +304,7 @@ public:
 			t2l = parameter(hg, p_t2l);
 		Expression p2a = parameter(hg, p_p2a);
 		Expression abias = parameter(hg, p_abias);
-		Expression action_start = parameter(hg, p_action_start);
-
-		action_lstm.add_input(action_start);
+		// Expression action_start = parameter(hg, p_action_start);
 
 		vector<Expression> buffer(sent.size() + 1);  // variables representing word embeddings (possibly including POS info)
 		vector<int> bufferi(sent.size() + 1);  // position of the words in the sentence
@@ -341,6 +340,10 @@ public:
 		// drive dummy symbol on stack through LSTM
 		stack_lstm.add_input(stack.back());
 		
+		// 
+		Expression action_start = concatenate({stack_lstm.back(), buffer_lstm.back()});
+		action_lstm.add_input(action_start);
+		
 		// push root to the stack
 		stack.push_back(buffer.back());
 		stack_lstm.add_input(buffer.back());
@@ -360,8 +363,10 @@ public:
 				if (IsActionFeasible(action.first, buffer.size(), stack.size(), stacki))
 					current_valid_actions.push_back(action.second);
 
-			// p_t = pbias + S * slstm + B * blstm + A * almst
-			Expression p_t = affine_transform({pbias, S, stack_lstm.back(), B, buffer_lstm.back(), A, action_lstm.back()});
+			// p_t = alstm({slstm, blstm})
+			Expression s_t = concatenate({stack_lstm.back(), buffer_lstm.back()});
+			action_lstm.add_input(s_t);
+			Expression p_t = action_lstm.back();
 			Expression nlp_t = rectify(p_t);
 			// r_t = abias + p2a * nlp
 			Expression r_t = affine_transform({abias, p2a, nlp_t});
@@ -386,12 +391,12 @@ public:
 			log_probs.push_back(pick(adiste, action));
 			results.push_back(action);
 
-			// add current action to action LSTM
-			Expression actione = lookup(hg, p_a, action);
-			action_lstm.add_input(actione);
+			// add current action to action LSTM : already done
+			// Expression actione = lookup(hg, p_a, action);
+			// action_lstm.add_input(actione);
 
 			// get relation embedding from action (TODO: convert to relation from action?)
-			Expression relation = lookup(hg, p_r, action);
+			// Expression relation = lookup(hg, p_r, action);
 
 			// do action
 			const string& actionString=transition.itos.at(action);
@@ -449,7 +454,7 @@ public:
 				stacki.pop_back();
 				if (headi == 0) rootword = form.itos.at(sent[depi]);
 				// composed = cbias + H * head + D * dep + R * relation
-				Expression composed = affine_transform({cbias, H, head, D, dep, R, relation});
+				Expression composed = affine_transform({cbias, H, head, D, dep, R, nlp_t});
 				Expression nlcomposed = tanh(composed);
 				stack_lstm.rewind_one_step();
 				stack_lstm.rewind_one_step();
@@ -679,9 +684,13 @@ int main(int argc, char** argv) {
 	ParserBuilder parser(model, corpus.form, corpus.transition, layers, lstm_input_dim, action_dim, 
 											 action_size, input_dim, vocab_size, p_unk, p_dropout, rel_dim, hidden_dim,
 											 use_pretrained, pretrained, use_pos, pos_size, pos_dim);
-	parser.train(corpus.train_sentences, corpus.dev_sentences, 
-							 corpus.test_sentences, epoch, lr, status_every_i_iterations,
-							 resume, param, trainer_state);
+	if (conf.count("train")) {
+		parser.train(corpus.train_sentences, corpus.dev_sentences, 
+								corpus.test_sentences, epoch, lr, status_every_i_iterations,
+								resume, param, trainer_state);
+	} else {
+		parser.test(corpus.test_sentences, status_every_i_iterations, true, param, true);
+	}
 
 	return 0;
 }

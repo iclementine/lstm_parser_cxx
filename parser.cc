@@ -144,7 +144,7 @@ public:
 		// p_S = model.add_parameters({hidden_dim, hidden_dim});
 		p_H = model.add_parameters({lstm_input_dim, lstm_input_dim});
 		p_D = model.add_parameters({lstm_input_dim, lstm_input_dim});
-		p_R = model.add_parameters({lstm_input_dim, hidden_dim}); // changed here
+		p_R = model.add_parameters({lstm_input_dim, action_size}); // changed here
 		p_w2l = model.add_parameters({lstm_input_dim, input_dim});
 		p_ib = model.add_parameters({lstm_input_dim});
 		p_cbias = model.add_parameters({lstm_input_dim});
@@ -454,7 +454,7 @@ public:
 				stacki.pop_back();
 				if (headi == 0) rootword = form.itos.at(sent[depi]);
 				// composed = cbias + H * head + D * dep + R * relation
-				Expression composed = affine_transform({cbias, H, head, D, dep, R, nlp_t});
+				Expression composed = affine_transform({cbias, H, head, D, dep, R, r_t});
 				Expression nlcomposed = tanh(composed);
 				stack_lstm.rewind_one_step();
 				stack_lstm.rewind_one_step();

@@ -679,9 +679,13 @@ int main(int argc, char** argv) {
 	ParserBuilder parser(model, corpus.form, corpus.transition, layers, lstm_input_dim, action_dim, 
 											 action_size, input_dim, vocab_size, p_unk, p_dropout, rel_dim, hidden_dim,
 											 use_pretrained, pretrained, use_pos, pos_size, pos_dim);
-	parser.train(corpus.train_sentences, corpus.dev_sentences, 
-							 corpus.test_sentences, epoch, lr, status_every_i_iterations,
-							 resume, param, trainer_state);
+	if (conf.count("train")) {
+		parser.train(corpus.train_sentences, corpus.dev_sentences, 
+								corpus.test_sentences, epoch, lr, status_every_i_iterations,
+								resume, param, trainer_state);
+	} else {
+		parser.test(corpus.test_sentences, status_every_i_iterations, true, param, true);
+	}
 
 	return 0;
 }

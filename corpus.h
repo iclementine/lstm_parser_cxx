@@ -13,12 +13,12 @@
 namespace treebank {
 	using namespace std;
 	
-template <typename T>
-ostream& operator<< (ostream& os, const vector<T>& vec) {
-	for (const T& x: vec)
-		cerr << x << ", ";
-	return os;
-}
+// template <typename T>
+// ostream& operator<< (ostream& os, const vector<T>& vec) {
+// 	for (const T& x: vec)
+// 		cerr << x << ", ";
+// 	return os;
+// }
 
 struct Sentence {
 	// leave it as a POD data type

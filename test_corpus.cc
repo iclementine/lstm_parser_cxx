@@ -4,6 +4,13 @@
 using namespace std;
 using namespace treebank;
 
+template <typename T>
+ostream& operator<< (ostream& os, const vector<T>& vec) {
+	for (const T& x: vec)
+		cerr << x << ", ";
+	return os;
+}
+
 int main(){
 	cout << "hello world!" << endl;
 	Corpus corpus;

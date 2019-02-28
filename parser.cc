@@ -515,7 +515,7 @@ public:
 		}
 		
 		// load trainer state
-		SimpleSGDTrainer trainer(pc, lr);
+		CyclicalSGDTrainer trainer(pc, lr);
 		if (resume && trainer_state.size()) {
 			ifstream is(trainer_state);
 			trainer.populate(is);
@@ -540,7 +540,7 @@ public:
 					TextFileSaver s(param); s.save(pc);
 					ofstream os(trainer_state); trainer.save(os);
 				}
-				random_shuffle(ids.begin(), ids.end()); sid = 0; trainer.learning_rate *= 0.9;
+				random_shuffle(ids.begin(), ids.end()); sid = 0; // trainer.learning_rate *= 0.9;
 			}
 			
 			if ((tot_seen > 0) && (tot_seen % status_every_i_iterations == 0)) {

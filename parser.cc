@@ -33,43 +33,43 @@ void InitCommandLine(int argc, char** argv, po::variables_map& conf) {
 	// very typical function that uses side-effect, output to output parameter and returns nothing
 	po::options_description opts("Configuration options");
 	opts.add_options()
-		("training_data,T", po::value<string>(), "List of Transitions - Training corpus")
-		("dev_data,d", po::value<string>(), "Development corpus")
-		("test_data,p", po::value<string>(), "Test corpus")
-		("epoches,e", po::value<unsigned>()->default_value(20), "Training epoches")
-		("init_learning_rate,l", po::value<double>()->default_value(0.2), "Init learning rate")
-		("resume,r", "Whether to resume training")
-		("unk_strategy,o", po::value<unsigned>()->default_value(1), "Unknown word strategy: 1 = singletons become UNK with probability unk_prob")
-		("unk_prob,u", po::value<double>()->default_value(0.2), "Probably with which to replace singletons with UNK in training data")
-		("dropout_prob,D", po::value<double>()->default_value(0.3), "Dropout probability of lstms")
-		("param,m", po::value<string>(), "Load/ save save model from/ to this file")
-		("trainer_state,s", po::value<string>(), "Load/ save trainer state from/ to this file")
-		("use_pos_tags,P", po::value<bool>(), "make POS tags visible to parser")
-		("layers", po::value<unsigned>()->default_value(2), "number of LSTM layers")
-		("action_dim", po::value<unsigned>()->default_value(16), "action embedding size")
-		("input_dim", po::value<unsigned>()->default_value(32), "input embedding size")
-		("hidden_dim", po::value<unsigned>()->default_value(64), "hidden dimension")
-		("pretrained_dim", po::value<unsigned>()->default_value(50), "pretrained input dimension")
-		("pos_dim", po::value<unsigned>()->default_value(12), "POS dimension")
-		("rel_dim", po::value<unsigned>()->default_value(10), "relation dimension")
-		("lstm_input_dim", po::value<unsigned>()->default_value(60), "LSTM input dimension")
-		("train,t", "Should training be run?")
-		("words,w", po::value<string>(), "Pretrained word embeddings")
-		("config", po::value<string>(), "Config file")
-		("help,h", "Help");
+	("training_data,T", po::value<string>(), "List of Transitions - Training corpus")
+	("dev_data,d", po::value<string>(), "Development corpus")
+	("test_data,p", po::value<string>(), "Test corpus")
+	("epoches,e", po::value<unsigned>()->default_value(20), "Training epoches")
+	("init_learning_rate,l", po::value<double>()->default_value(0.2), "Init learning rate")
+	("resume,r", "Whether to resume training")
+	("unk_strategy,o", po::value<unsigned>()->default_value(1), "Unknown word strategy: 1 = singletons become UNK with probability unk_prob")
+	("unk_prob,u", po::value<double>()->default_value(0.2), "Probably with which to replace singletons with UNK in training data")
+	("dropout_prob,D", po::value<double>()->default_value(0.3), "Dropout probability of lstms")
+	("param,m", po::value<string>(), "Load/ save save model from/ to this file")
+	("trainer_state,s", po::value<string>(), "Load/ save trainer state from/ to this file")
+	("use_pos_tags,P", po::value<bool>(), "make POS tags visible to parser")
+	("layers", po::value<unsigned>()->default_value(2), "number of LSTM layers")
+	("action_dim", po::value<unsigned>()->default_value(16), "action embedding size")
+	("input_dim", po::value<unsigned>()->default_value(32), "input embedding size")
+	("hidden_dim", po::value<unsigned>()->default_value(64), "hidden dimension")
+	("pretrained_dim", po::value<unsigned>()->default_value(50), "pretrained input dimension")
+	("pos_dim", po::value<unsigned>()->default_value(12), "POS dimension")
+	("rel_dim", po::value<unsigned>()->default_value(10), "relation dimension")
+	("lstm_input_dim", po::value<unsigned>()->default_value(60), "LSTM input dimension")
+	("train,t", "Should training be run?")
+	("words,w", po::value<string>(), "Pretrained word embeddings")
+	("config", po::value<string>(), "Config file")
+	("help,h", "Help");
 	po::options_description dcmdline_options;
 	dcmdline_options.add(opts);
 
 	// allow unregistered options, pass them through to dynet
 	po::store(po::command_line_parser(argc, argv).options(dcmdline_options).allow_unregistered().run(), conf);
 
-	if (conf.count("config")){
-		ifstream ifs{conf["config"].as<string>()};
+	if (conf.count("config")) {
+		ifstream ifs {conf["config"].as<string>()};
 		if (ifs)
 			po::store(po::parse_config_file(ifs, dcmdline_options), conf);
 	}
 	po::notify(conf);
-	
+
 	if (conf.count("help")) {
 		cerr << dcmdline_options << endl;
 		exit(1);
@@ -88,7 +88,7 @@ struct Result {
 };
 
 struct ParserBuilder {
-	
+
 public:
 	bool use_pos;
 	bool use_pretrained;
@@ -122,20 +122,20 @@ public:
 	Parameter p_buffer_guard;  // end of buffer
 	Parameter p_stack_guard;  // end of stack
 	ParameterCollection& pc;  // parameter collection
-  
+
 public:
-	explicit ParserBuilder(ParameterCollection& model, Vocab& t_form, Vocab& t_transition, 
-												 unsigned layers, unsigned lstm_input_dim, unsigned action_dim, unsigned action_size, 
-												 unsigned input_dim, unsigned vocab_size, double t_p_unk, double t_p_dropout, 
-												 unsigned rel_dim, unsigned hidden_dim, bool t_use_pretrained, 
-												 const unordered_map<unsigned, vector<float>>& pretrained,
-												 bool t_use_pos, unsigned pos_size, unsigned pos_dim) :
-			use_pos(t_use_pos), use_pretrained(t_use_pretrained), 
-			p_unk(t_p_unk),p_dropout(t_p_dropout),
-			form(t_form), transition(t_transition),
-			stack_lstm(layers, lstm_input_dim, hidden_dim, model),
-			buffer_lstm(layers, lstm_input_dim, hidden_dim, model),
-			action_lstm(layers, action_dim, hidden_dim, model), pc(model) {
+	explicit ParserBuilder(ParameterCollection& model, Vocab& t_form, Vocab& t_transition,
+	                       unsigned layers, unsigned lstm_input_dim, unsigned action_dim, unsigned action_size,
+	                       unsigned input_dim, unsigned vocab_size, double t_p_unk, double t_p_dropout,
+	                       unsigned rel_dim, unsigned hidden_dim, bool t_use_pretrained,
+	                       const unordered_map<unsigned, vector<float>>& pretrained,
+	                       bool t_use_pos, unsigned pos_size, unsigned pos_dim) :
+		use_pos(t_use_pos), use_pretrained(t_use_pretrained),
+		p_unk(t_p_unk), p_dropout(t_p_dropout),
+		form(t_form), transition(t_transition),
+		stack_lstm(layers, lstm_input_dim, hidden_dim, model),
+		buffer_lstm(layers, lstm_input_dim, hidden_dim, model),
+		action_lstm(layers, action_dim, hidden_dim, model), pc(model) {
 		p_w = model.add_lookup_parameters(vocab_size, {input_dim});
 		p_a = model.add_lookup_parameters(action_size, {action_dim});
 		p_r = model.add_lookup_parameters(action_size, {rel_dim});
@@ -149,7 +149,7 @@ public:
 		p_w2l = model.add_parameters({lstm_input_dim, input_dim});
 		p_ib = model.add_parameters({lstm_input_dim});
 		p_cbias = model.add_parameters({lstm_input_dim});
-		p_p2a= model.add_parameters({action_size, hidden_dim});
+		p_p2a = model.add_parameters({action_size, hidden_dim});
 		p_action_start = model.add_parameters({action_dim});
 		p_abias = model.add_parameters({action_size});
 		p_buffer_guard = model.add_parameters({lstm_input_dim});
@@ -161,7 +161,7 @@ public:
 		if (use_pretrained) {
 			unsigned pretrained_dim = pretrained.at(0).size();
 			p_t = model.add_lookup_parameters(pretrained.size(), {pretrained_dim});
-			for (auto it: pretrained)
+			for (auto it : pretrained)
 				p_t.initialize(it.first, it.second);
 			p_t2l = model.add_parameters({lstm_input_dim, pretrained_dim});
 		}
@@ -181,7 +181,7 @@ public:
 
 	// Dynamic Oracle for hybrid
 	static bool isActionZeroCost(const string& a, const vector<int>& stacki, const vector<int>& bufferi,
-															 const vector<int>& gold_head, map<int, vector<int>>& gold_children) {
+	                             const vector<int>& gold_head, map<int, vector<int>>& gold_children) {
 		if (a[0] == 'S') {
 			int buffer_top = bufferi.back();
 			int buffer_top_head = gold_head.at(buffer_top);
@@ -191,7 +191,7 @@ public:
 				return find(stacki.begin(), stacki.end(), i) != stacki.end();
 			}; // oh my lambda
 			if ((find(stacki.begin(), pos, buffer_top_head) != pos)
-				|| (any_of(buffer_top_children.begin(), buffer_top_children.end(), in_stack)))
+			    || (any_of(buffer_top_children.begin(), buffer_top_children.end(), in_stack)))
 				return false;
 		} else if (a[0] == 'L') {
 			int stack_top = stacki.back();
@@ -203,8 +203,8 @@ public:
 				return find(bufferi.begin(), bufferi.end(), i) != bufferi.end();
 			}; // oh my lambda
 			if ((find(stacki.begin(), spos, stack_top_head) != spos)
-				|| (find(bufferi.begin(), bpos, stack_top_head) != bpos)
-				|| (any_of(stack_top_children.begin(), stack_top_children.end(), in_buffer))) {
+			    || (find(bufferi.begin(), bpos, stack_top_head) != bpos)
+			    || (any_of(stack_top_children.begin(), stack_top_children.end(), in_buffer))) {
 				return false;
 			}
 		} else if (a[0] == 'R') {
@@ -215,13 +215,13 @@ public:
 				return find(bufferi.begin(), bufferi.end(), i) != bufferi.end();
 			}; // oh my lambda
 			if ((find(bufferi.begin(), bufferi.end(), stack_top_head) != bufferi.end())
-				|| (any_of(stack_top_children.begin(), stack_top_children.end(), in_buffer)))
-			return false;
+			    || (any_of(stack_top_children.begin(), stack_top_children.end(), in_buffer)))
+				return false;
 		}
 		return true;
 	}
-	
-	// take a vector of actions and return a parse tree 
+
+	// take a vector of actions and return a parse tree
 	// heads including that for <root>
 	vector<int> compute_heads(unsigned sent_len, const vector<unsigned>& actions) {
 		vector<int> heads(sent_len, -1);
@@ -230,12 +230,13 @@ public:
 		for (unsigned i = 0; i < sent_len; ++i)
 			bufferi[sent_len - i] = i;
 		bufferi[0] = -999;
-		stacki.push_back(bufferi.back()); bufferi.pop_back();
-		
-		for (auto action: actions) { // loop over transitions for sentence
-			const string& actionString=transition.itos.at(action);
+		stacki.push_back(bufferi.back());
+		bufferi.pop_back();
+
+		for (auto action : actions) { // loop over transitions for sentence
+			const string& actionString = transition.itos.at(action);
 			const char ac = actionString[0];
-			if (ac =='S') {  // SHIFT
+			if (ac == 'S') { // SHIFT
 				assert(bufferi.size() > 1); // dummy symbol means > 1 (not >= 1)
 				stacki.push_back(bufferi.back());
 				bufferi.pop_back();
@@ -263,44 +264,49 @@ public:
 		}
 		return correct_head;
 	}
-	
+
 	void output_conll(const vector<string>& sent, const vector<string>& sent_pos,
-										const vector<int>& hyp) {
+	                  const vector<int>& hyp) {
 		for (unsigned i = 1; i < sent.size(); ++i) {
 			string wit = sent[i];
 			string pit = sent_pos[i];
 			int hyp_head = hyp[i];
-			cout << i << '\t'          // 1. ID 
-					<< wit << '\t'         // 2. FORM
-					<< "_" << '\t'         // 3. LEMMA 
-					<< "_" << '\t'         // 4. CPOSTAG 
-					<< pit << '\t'         // 5. POSTAG
-					<< "_" << '\t'         // 6. FEATS
-					<< hyp_head << '\t'    // 7. HEAD
-					<< "_" << '\t'     // 8. DEPREL
-					<< "_" << '\t'         // 9. PHEAD
-					<< "_" << endl;        // 10. PDEPREL
+			cout << i << '\t'          // 1. ID
+			     << wit << '\t'         // 2. FORM
+			     << "_" << '\t'         // 3. LEMMA
+			     << "_" << '\t'         // 4. CPOSTAG
+			     << pit << '\t'         // 5. POSTAG
+			     << "_" << '\t'         // 6. FEATS
+			     << hyp_head << '\t'    // 7. HEAD
+			     << "_" << '\t'     // 8. DEPREL
+			     << "_" << '\t'         // 9. PHEAD
+			     << "_" << endl;        // 10. PDEPREL
 		}
 		cout << endl;
 	}
 
-	Result log_prob_parser(ComputationGraph& hg, const vector<unsigned>& sent, 
-												 const vector<unsigned>& sent_pos, const vector<int>& gold_head) {
+	Result log_prob_parser(ComputationGraph& hg, const vector<unsigned>& sent,
+	                       const vector<unsigned>& sent_pos, const vector<int>& gold_head) {
 		vector<unsigned> results;
 		unsigned right = 0;
 		const bool build_training_graph = !gold_head.empty();
 		// set dropout and do unk replacement, compute reference
-		vector<unsigned> tsent = sent; unsigned unk_id = form.stoi.at(Vocab::UNK);
+		vector<unsigned> tsent = sent;
+		unsigned unk_id = form.stoi.at(Vocab::UNK);
 		map<int, vector<int>> gold_children;
 		if (build_training_graph) {
-			stack_lstm.set_dropout(0.3); buffer_lstm.set_dropout(0.3); action_lstm.set_dropout(0.3);
+			stack_lstm.set_dropout(0.3);
+			buffer_lstm.set_dropout(0.3);
+			action_lstm.set_dropout(0.3);
 			for (unsigned i = 0; i < sent.size(); ++i)
 				if (form.itofreq.at(sent[i]) == 1 && dynet::rand01() < p_unk)
 					tsent[i] = unk_id;
 			for (int i = 1; i < gold_head.size(); ++i)
 				gold_children[gold_head[i]].push_back(i);
 		} else {
-			stack_lstm.disable_dropout(); buffer_lstm.disable_dropout(); action_lstm.disable_dropout();
+			stack_lstm.disable_dropout();
+			buffer_lstm.disable_dropout();
+			action_lstm.disable_dropout();
 		}
 		stack_lstm.new_graph(hg);
 		buffer_lstm.new_graph(hg);
@@ -337,7 +343,7 @@ public:
 
 		for (unsigned i = 0; i < sent.size(); ++i) {
 			assert(sent[i] < form.stoi.size());
-			Expression w =lookup(hg, p_w, tsent[i]); 
+			Expression w = lookup(hg, p_w, tsent[i]);
 			vector<Expression> args = {ib, w2l, w}; // learn embeddings
 			if (use_pos) { // learn POS tag?
 				Expression p = lookup(hg, p_p, sent_pos[i]);
@@ -364,7 +370,7 @@ public:
 		stacki.push_back(-999); // not used for anything
 		// drive dummy symbol on stack through LSTM
 		stack_lstm.add_input(stack.back());
-		
+
 		// push root to the stack
 		stack.push_back(buffer.back());
 		stack_lstm.add_input(buffer.back());
@@ -372,15 +378,15 @@ public:
 		buffer_lstm.rewind_one_step();
 		stacki.push_back(bufferi.back());
 		bufferi.pop_back();
-		
+
 		// End of "Setup" code, now start the main loop
 		vector<Expression> log_probs;
 		string rootword; //
 		unsigned action_count = 0;  // incremented at each prediction
-		while(stack.size() > 2 || buffer.size() > 1) {
+		while (stack.size() > 2 || buffer.size() > 1) {
 			// get list of possible actions for the current parser state
 			vector<unsigned> current_valid_actions;
-			for (const auto& action: transition.stoi)
+			for (const auto& action : transition.stoi)
 				if (IsActionFeasible(action.first, buffer.size(), stack.size()))
 					current_valid_actions.push_back(action.second);
 			assert(current_valid_actions.size() > 0);
@@ -407,13 +413,13 @@ public:
 			if (build_training_graph) {
 				// comptute the dynamic oracle
 				string act;
-				for (unsigned aci: current_valid_actions) {
+				for (unsigned aci : current_valid_actions) {
 					act = transition.itos.at(aci);
 					if (isActionZeroCost(act, stacki, bufferi, gold_head, gold_children))
 						dynamic_oracle.push_back(aci);
 				}
-				
-				// decide which action to take, by multinomial sample
+
+				//decide which action to take, by multinomial sample
 				double p = rand01();
 				for (unsigned i = 0; i < adist.size(); ++i) {
 					p -= adist[i];
@@ -421,16 +427,30 @@ public:
 						action = i; // action id
 						break;
 					}
-        }
-        if (find(dynamic_oracle.begin(), dynamic_oracle.end(), action) != dynamic_oracle.end()) ++right;
+				}
+
+
+				// anothor mathod that
+				p = rand01();
+				if ((current_valid_actions.size() > dynamic_oracle.size()) && p < 0.5) {
+					vector<unsigned> non_oracle;
+					auto not_in_oracle = [&dynamic_oracle](unsigned x) -> bool {
+						return find(dynamic_oracle.begin(), dynamic_oracle.end(), x) ==  dynamic_oracle.end();
+					};
+					copy_if(current_valid_actions.begin(), current_valid_actions.end(),
+					        std::back_inserter(non_oracle), not_in_oracle);
+					action = non_oracle[rand0n(non_oracle.size())];
+				}
+
+				if (find(dynamic_oracle.begin(), dynamic_oracle.end(), action) != dynamic_oracle.end()) ++right;
 			}
-			
+
 			++action_count;
-			
+
 			// loss accumulation
 			if (build_training_graph) {
 				vector<Expression> logps_oracle;
-				for (unsigned i: dynamic_oracle) logps_oracle.push_back(pick(adiste, i));
+				for (unsigned i : dynamic_oracle) logps_oracle.push_back(pick(adiste, i));
 				log_probs.push_back(sum(logps_oracle) / logps_oracle.size());
 			} else {
 				log_probs.push_back(pick(adiste, action));
@@ -445,12 +465,12 @@ public:
 			Expression relation = lookup(hg, p_r, action);
 
 			// do action
-			const string& actionString=transition.itos.at(action);
+			const string& actionString = transition.itos.at(action);
 			const char ac = actionString[0];
 			// const char ac2 = actionString[1];
 
 
-			if (ac =='S') {  // SHIFT
+			if (ac == 'S') { // SHIFT
 				assert(buffer.size() > 1); // dummy symbol means > 1 (not >= 1)
 				stack.push_back(buffer.back());
 				stack_lstm.add_input(buffer.back());
@@ -462,10 +482,12 @@ public:
 				assert(stack.size() > 3 || (stack.size() == 3 && buffer.size() == 1)); // dummy symbol means > 2 (not >= 2)
 				Expression dep, head;
 				unsigned depi = 0, headi = 0;
-				dep = stack.back(); depi = stacki.back();
+				dep = stack.back();
+				depi = stacki.back();
 				stack.pop_back();
 				stacki.pop_back();
-				head = stack.back(); headi = stacki.back();
+				head = stack.back();
+				headi = stacki.back();
 				stack.pop_back();
 				stacki.pop_back();
 				if (headi == 0) rootword = form.itos.at(sent[depi]);
@@ -482,10 +504,12 @@ public:
 				assert(stack.size() > 2 && buffer.size() > 1);
 				Expression dep = stack.back();
 				//unsigned depi = stacki.back();
-				stack.pop_back(); stacki.pop_back();
+				stack.pop_back();
+				stacki.pop_back();
 				Expression head = buffer.back();
 				unsigned headi = bufferi.back();
-				buffer.pop_back(); bufferi.pop_back();
+				buffer.pop_back();
+				bufferi.pop_back();
 				// composed = cbias + H * head + D * dep + R * relation
 				Expression composed = affine_transform({cbias, H, head, D, dep, R, relation});
 				Expression nlcomposed = tanh(composed);
@@ -502,54 +526,60 @@ public:
 		assert(bufferi.size() == 1);
 		Expression tot_neglogprob = -sum(log_probs);
 		assert(tot_neglogprob.pg != nullptr);
-		return Result{results, tot_neglogprob, results.size(), right}; // TODO consider the return type
+		return Result {results, tot_neglogprob, results.size(), right}; // TODO consider the return type
 	}
 
-	void train(const vector<Sentence>& train_sentences, const vector<Sentence>& dev_sentences, 
-						 const vector<Sentence>& test_sentences, unsigned epoch, double lr, 
-						 unsigned status_every_i_iterations, bool resume, string param, string trainer_state) {
+	void train(const vector<Sentence>& train_sentences, const vector<Sentence>& dev_sentences,
+	           const vector<Sentence>& test_sentences, unsigned epoch, double lr,
+	           unsigned status_every_i_iterations, bool resume, string param, string trainer_state) {
 		// load parameter collection
 		if (resume && param.size()) {
 			TextFileLoader l(param);
 			l.populate(pc);
 		}
-		
+
 		// load trainer state
-		CyclicalSGDTrainer trainer(pc, lr);
+		SimpleSGDTrainer trainer(pc, lr);
 		if (resume && trainer_state.size()) {
 			ifstream is(trainer_state);
 			trainer.populate(is);
 		}
-		
+
 		// stat
-		unsigned trs = 0; unsigned right = 0; double llh; //clear every status for output
-		int iter = 0; unsigned tot_seen = 0; // always incremented
+		unsigned trs = 0;
+		unsigned right = 0;
+		double llh; //clear every status for output
+		int iter = 0;
+		unsigned tot_seen = 0; // always incremented
 		unsigned sid = 0; // sentence id, clear every epoch
 		double best_uas = 0, best_las = 0;
-		
+
 		// ids
 		vector<unsigned> ids = vector<unsigned>(train_sentences.size(), 0);
 		for (unsigned i = 0; i < train_sentences.size(); ++i) ids[i] = i;
-		
+
 		cerr << "=====training begin=====" << endl;
 		while (tot_seen / train_sentences.size() < epoch) {
 			if (sid == train_sentences.size()) {
 				double uas, las;
 				tie(uas, las) = test(dev_sentences, status_every_i_iterations, false, string(), false);
 				if (uas > best_uas) {
-					TextFileSaver s(param); s.save(pc);
-					ofstream os(trainer_state); trainer.save(os);
+					TextFileSaver s(param);
+					s.save(pc);
+					ofstream os(trainer_state);
+					trainer.save(os);
 				}
-				random_shuffle(ids.begin(), ids.end()); sid = 0; // trainer.learning_rate *= 0.9;
+				random_shuffle(ids.begin(), ids.end());
+				sid = 0; trainer.learning_rate *= 0.99;
 			}
-			
+
 			if ((tot_seen > 0) && (tot_seen % status_every_i_iterations == 0)) {
 				trainer.status();
-				ptime time_now{second_clock::local_time()};
-				cerr << "update #" << iter << " (epoch " << (double(tot_seen) / train_sentences.size()) 
-					<< " |time=" << time_now << ")\tllh: " << llh 
-					<<" ppl: " << exp(llh / trs) 
-					<< " err: " << double(trs - right) / trs << endl;
+				ptime time_now {second_clock::local_time()};
+				cerr << "update #" << iter << " (epoch " << (double(tot_seen) / train_sentences.size())
+				     << " |time=" << time_now << ")\tllh: " << llh
+				     << " ppl: " << exp(llh / trs)
+				     << " err: " << double(trs - right) / trs << endl;
 				llh = trs = right = 0;
 			}
 
@@ -557,25 +587,33 @@ public:
 			const Sentence& sent = train_sentences[ids[sid]];
 			Result result = log_prob_parser(hg, sent.formi, sent.posi, sent.head);
 			double loss = as_scalar(hg.forward(result.loss));
-			hg.backward(result.loss); trainer.update();
-			++sid; ++tot_seen; ++iter; trs += result.num_prediction; llh += loss; right += result.right;
+			hg.backward(result.loss);
+			trainer.update();
+			++sid;
+			++tot_seen;
+			++iter;
+			trs += result.num_prediction;
+			llh += loss;
+			right += result.right;
 		}
-		
+
 		// final test on test Setup
 		test(test_sentences, status_every_i_iterations, true, param, true);
 	}
-	
-	tuple<double, double> test(const vector<Sentence>& test_sentences, unsigned status_every_i_iterations, 
-														 bool resume, string param, bool output) {
+
+	tuple<double, double> test(const vector<Sentence>& test_sentences, unsigned status_every_i_iterations,
+	                           bool resume, string param, bool output) {
 		// load parameter collection
 		if (resume && param.size()) {
 			TextFileLoader l(param);
 			l.populate(pc);
 		}
-		
+
 		//stat
 		ptime start = microsec_clock::local_time();
-		unsigned tot_tokens = 0; unsigned correct_head = 0; unsigned correct_rel = 0;
+		unsigned tot_tokens = 0;
+		unsigned correct_head = 0;
+		unsigned correct_rel = 0;
 		double right = 0;
 		for (unsigned i = 0; i < test_sentences.size(); ++i) {
 			ComputationGraph hg;
@@ -584,15 +622,16 @@ public:
 			const Sentence& sent = test_sentences[i];
 			Result result = log_prob_parser(hg, sent.formi, sent.posi, vector<int>());
 			double loss = as_scalar(hg.forward(result.loss));
-			// compute heads and 
+			// compute heads and
 			vector<int> hyp = compute_heads(sent.form.size(), result.transitions);
 			unsigned h = compute_correct(sent.head, hyp, sent.form.size());
-			correct_head += h; tot_tokens += sent.form.size() - 1;
+			correct_head += h;
+			tot_tokens += sent.form.size() - 1;
 			if (output)
 				output_conll(sent.form, sent.pos, hyp);
 		}
 		ptime end = microsec_clock::local_time();
-		if (!output) 
+		if (!output)
 			cerr << "test " << test_sentences.size() << " sentences in " << (end - start).total_milliseconds() << " ms." << endl;
 		double uas = double(correct_head) / tot_tokens;
 		double las = double(correct_rel) / tot_tokens;
@@ -608,14 +647,14 @@ public:
 	double tot_loss = 0;
 	size_t num_token = 0;
 	unsigned right_head = 0;
-	
+
 public:
 	Stat() {}
-	Stat(size_t t_num_pred, unsigned t_right, double t_loss, 
-			 size_t t_num_token, unsigned t_head):
+	Stat(size_t t_num_pred, unsigned t_right, double t_loss,
+	     size_t t_num_token, unsigned t_head):
 		num_prediction(t_num_pred), right(t_right), tot_loss(t_loss),
 		num_token(t_num_token), right_head(t_head) {}
-	
+
 	Stat& operator+=(const Stat& rhs) {
 		num_prediction += rhs.num_prediction;
 		right += rhs.right;
@@ -624,71 +663,72 @@ public:
 		right_head += rhs.right_head;
 		return *this;
 	}
-	
+
 	friend Stat operator+(Stat lhs, const Stat& rhs) {
 		lhs += rhs;
 		return lhs;
 	}
-	
+
 	bool operator<(const Stat& rhs) {
 		// FIX: smaller loss translates into better uas or las
-    return double(right_head) / num_token > double(rhs.right_head) / rhs.num_token;
-  }
-	
+		return double(right_head) / num_token > double(rhs.right_head) / rhs.num_token;
+	}
+
 	friend ostream& operator<<(ostream& stream, const Stat& stat) {
-		stream << "ppl: " << exp(double(stat.tot_loss) / stat.num_prediction) 
-			<< "\tuas: " << double(stat.right_head) / stat.num_token;
+		stream << "ppl: " << exp(double(stat.tot_loss) / stat.num_prediction)
+		       << "\tuas: " << double(stat.right_head) / stat.num_token;
 		return stream;
 	}
 };
 
 class Learner : public ILearner<Sentence, Stat> {
 public:
-  explicit Learner(ParserBuilder& t_parser, unsigned data_size) : parser(t_parser) {}
-  ~Learner() {}
+	explicit Learner(ParserBuilder& t_parser, unsigned data_size) : parser(t_parser) {}
+	~Learner() {}
 
-  Stat LearnFromDatum(const Sentence& sent, bool learn) {
-    ComputationGraph hg;
-    Result result = parser.log_prob_parser(hg, sent.formi, sent.posi, learn ? sent.head : vector<int>());
-    double loss = as_scalar(hg.forward(result.loss));
+	Stat LearnFromDatum(const Sentence& sent, bool learn) {
+		ComputationGraph hg;
+		Result result = parser.log_prob_parser(hg, sent.formi, sent.posi, learn ? sent.head : vector<int>());
+		double loss = as_scalar(hg.forward(result.loss));
 		unsigned h = 0;
-    if (learn) {
-      hg.backward(result.loss);
-    } else {
+		if (learn) {
+			hg.backward(result.loss);
+		} else {
 			vector<int> hyp = parser.compute_heads(sent.form.size(), result.transitions);
 			h = parser.compute_correct(sent.head, hyp, sent.form.size());
 		}
-    return Stat{sent.transitionsi.size(), result.right, loss, sent.formi.size() - 1, h};
-  }
+		return Stat {sent.transitionsi.size(), result.right, loss, sent.formi.size() - 1, h};
+	}
 
-  void SaveModel() {
-		TextFileSaver s("lstm-parser.model"); s.save(parser.pc);
+	void SaveModel() {
+		TextFileSaver s("lstm-parser.model");
+		s.save(parser.pc);
 	}
 
 private:
-  ParserBuilder& parser;
+	ParserBuilder& parser;
 };
 
 int main(int argc, char** argv) {
-	
+
 	// parse command line args and prepare args for ParserBuilder
 	po::variables_map conf;
 	InitCommandLine(argc, argv, conf);
-	
+
 	auto training_data = conf["training_data"].as<string>();
 	auto dev_data = conf["dev_data"].as<string>();
 	auto test_data = conf["test_data"].as<string>();
-	
+
 	// Read in corpus
 	cerr << "Reading corpus..." << endl;
 	Corpus corpus;
 	corpus.load_corpus(corpus.train_sentences, training_data);
 	corpus.load_corpus_dev(corpus.dev_sentences, dev_data);
 	corpus.load_corpus_dev(corpus.test_sentences, test_data);
-// 	cerr << corpus.form << endl << corpus.pos << endl 
+// 	cerr << corpus.form << endl << corpus.pos << endl
 // 		<< corpus.deprel << endl << corpus.transition << endl
 // 		<< corpus.chars << endl;
-	
+
 	const auto epoch = conf["epoches"].as<unsigned>();
 	const auto lr = conf["init_learning_rate"].as<double>();
 	bool resume = conf.count("resume");
@@ -731,67 +771,67 @@ int main(int argc, char** argv) {
 				pretrained[max_id++] = v; // pretrained has possibly more word entries than corpus.form.itos
 		}
 	}
-	
+
 	bool use_pos = conf["use_pos_tags"].as<bool>();
-	unsigned pos_size = 0; 
+	unsigned pos_size = 0;
 	unsigned pos_dim;
 	if (use_pos) {
 		pos_size = corpus.pos.stoi.size();
 		pos_dim = conf["pos_dim"].as<unsigned>();
 	}
 	const unsigned status_every_i_iterations = 100;
-	
-	// print conf 
+
+	// print conf
 	cerr << "======Configuration is=====" << endl
-		<< boolalpha
-		<< "training_data: " << training_data << endl
-		<< "training epoches: " << epoch << endl
-		<< "init learning rate: " << lr << endl 
-		<< "dev_data: " << dev_data << endl
-		<< "layers: " << layers << endl
-		<< "lstm_input_dim: " << lstm_input_dim << endl
-		<< "dropout_prob: " << p_dropout << endl
-		<< "action_dim: " << action_dim << endl
-		<< "action_size: " << action_size << endl
-		<< "input_dim: " << input_dim << endl
-		<< "vocab_size: " << vocab_size << endl
-		<< "rel_dim: " << rel_dim << endl
-		<< "hidden_dim: "  << hidden_dim << endl
-		<< "use_pos_tags: " << use_pos << endl
-		<< "resume: " << resume << endl
-		<< "param path: " << param << endl
-		<< "trainer state: " << trainer_state << endl;
-	if (use_pos) 
+	     << boolalpha
+	     << "training_data: " << training_data << endl
+	     << "training epoches: " << epoch << endl
+	     << "init learning rate: " << lr << endl
+	     << "dev_data: " << dev_data << endl
+	     << "layers: " << layers << endl
+	     << "lstm_input_dim: " << lstm_input_dim << endl
+	     << "dropout_prob: " << p_dropout << endl
+	     << "action_dim: " << action_dim << endl
+	     << "action_size: " << action_size << endl
+	     << "input_dim: " << input_dim << endl
+	     << "vocab_size: " << vocab_size << endl
+	     << "rel_dim: " << rel_dim << endl
+	     << "hidden_dim: "  << hidden_dim << endl
+	     << "use_pos_tags: " << use_pos << endl
+	     << "resume: " << resume << endl
+	     << "param path: " << param << endl
+	     << "trainer state: " << trainer_state << endl;
+	if (use_pos)
 		cerr << "pos_dim: " << pos_dim << endl
-			<< "pos_size: " << pos_size << endl;
+		     << "pos_size: " << pos_size << endl;
 	cerr << "use_pretrained: " << use_pretrained << endl;
-	if (use_pretrained) 
+	if (use_pretrained)
 		cerr << "pretrained embeddings size is " << pretrained.size() << endl;
-	
-	
-  cerr << "Unknown word strategy: ";
-  if (unk_strategy == 1) {
-    cerr << "stochastic replacement of hapax legomena\n";
+
+
+	cerr << "Unknown word strategy: ";
+	if (unk_strategy == 1) {
+		cerr << "stochastic replacement of hapax legomena\n";
 		cerr << "unk_prob: " << p_unk << endl;
-  } else {
-    abort();
-  }
+	} else {
+		abort();
+	}
 	cerr << "====================" << endl;
-	
+
 	// dynet build model
 	dynet::initialize(argc, argv, true);
 	ParameterCollection model;
-	ParserBuilder parser(model, corpus.form, corpus.transition, layers, lstm_input_dim, action_dim, 
-											 action_size, input_dim, vocab_size, p_unk, p_dropout, rel_dim, hidden_dim,
-											 use_pretrained, pretrained, use_pos, pos_size, pos_dim);
+	ParserBuilder parser(model, corpus.form, corpus.transition, layers, lstm_input_dim, action_dim,
+	                     action_size, input_dim, vocab_size, p_unk, p_dropout, rel_dim, hidden_dim,
+	                     use_pretrained, pretrained, use_pos, pos_size, pos_dim);
 	if (conf.count("train"))
-		parser.train(corpus.train_sentences, corpus.dev_sentences, 
-								corpus.test_sentences, epoch, lr, status_every_i_iterations,
-								resume, param, trainer_state);
+		parser.train(corpus.train_sentences, corpus.dev_sentences,
+		             corpus.test_sentences, epoch, lr, status_every_i_iterations,
+		             resume, param, trainer_state);
 // 	SimpleSGDTrainer sgd(model, lr);
 // 	Learner learner(parser, corpus.train_sentences.size());
 // 	run_multi_process(4, &learner, &sgd, corpus.train_sentences, corpus.dev_sentences, epoch, corpus.train_sentences.size(), status_every_i_iterations);
 	parser.test(corpus.test_sentences, status_every_i_iterations, true, "lstm-parser.model", true);
-	
+
 	return 0;
 }

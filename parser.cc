@@ -41,6 +41,7 @@ void InitCommandLine(int argc, char** argv, po::variables_map& conf) {
 	("resume,r", "Whether to resume training")
 	("unk_strategy,o", po::value<unsigned>()->default_value(1), "Unknown word strategy: 1 = singletons become UNK with probability unk_prob")
 	("unk_prob,u", po::value<double>()->default_value(0.2), "Probably with which to replace singletons with UNK in training data")
+	("power", po::value<double>()->default_value(0.75), "power to probabilities before renormalizing")
 	("dropout_prob,D", po::value<double>()->default_value(0.3), "Dropout probability of lstms")
 	("param,m", po::value<string>(), "Load/ save save model from/ to this file")
 	("trainer_state,s", po::value<string>(), "Load/ save trainer state from/ to this file")
@@ -94,6 +95,7 @@ public:
 	bool use_pretrained;
 	double p_unk;
 	double p_dropout;
+	double power;
 	Vocab& form;
 	Vocab& transition;
 	LSTMBuilder stack_lstm; // (layers, input, hidden, trainer)
@@ -125,13 +127,14 @@ public:
 
 public:
 	explicit ParserBuilder(ParameterCollection& model, Vocab& t_form, Vocab& t_transition,
-	                       unsigned layers, unsigned lstm_input_dim, unsigned action_dim, unsigned action_size,
-	                       unsigned input_dim, unsigned vocab_size, double t_p_unk, double t_p_dropout,
+	                       unsigned layers, unsigned lstm_input_dim, unsigned action_dim, 
+	                       unsigned action_size, unsigned input_dim, unsigned vocab_size, 
+	                       double t_p_unk, double t_p_dropout, double t_power, 
 	                       unsigned rel_dim, unsigned hidden_dim, bool t_use_pretrained,
 	                       const unordered_map<unsigned, vector<float>>& pretrained,
 	                       bool t_use_pos, unsigned pos_size, unsigned pos_dim) :
 		use_pos(t_use_pos), use_pretrained(t_use_pretrained),
-		p_unk(t_p_unk), p_dropout(t_p_dropout),
+		p_unk(t_p_unk), p_dropout(t_p_dropout), power(t_power),
 		form(t_form), transition(t_transition),
 		stack_lstm(layers, lstm_input_dim, hidden_dim, model),
 		buffer_lstm(layers, lstm_input_dim, hidden_dim, model),
@@ -526,7 +529,7 @@ public:
 		assert(bufferi.size() == 1);
 		Expression tot_neglogprob = -sum(log_probs);
 		assert(tot_neglogprob.pg != nullptr);
-		return Result {results, tot_neglogprob, results.size(), right}; // TODO consider the return type
+		return Result {results, tot_neglogprob, results.size(), right};
 	}
 
 	void train(const vector<Sentence>& train_sentences, const vector<Sentence>& dev_sentences,
@@ -745,6 +748,7 @@ int main(int argc, char** argv) {
 	const auto unk_strategy = conf["unk_strategy"].as<unsigned>();
 	const auto p_unk = conf["unk_prob"].as<double>();
 	const auto p_dropout = conf["dropout_prob"].as<double>();
+	const auto power = conf["power"].as<double>();
 
 	// read in pretrained word embedding, I love iostream, stringstream, string, so good
 	unordered_map<unsigned, vector<float>> pretrained;
@@ -816,13 +820,16 @@ int main(int argc, char** argv) {
 	} else {
 		abort();
 	}
+	
+	cerr << "power for probability renormalizing" << endl;
 	cerr << "====================" << endl;
 
 	// dynet build model
 	dynet::initialize(argc, argv, true);
 	ParameterCollection model;
 	ParserBuilder parser(model, corpus.form, corpus.transition, layers, lstm_input_dim, action_dim,
-	                     action_size, input_dim, vocab_size, p_unk, p_dropout, rel_dim, hidden_dim,
+	                     action_size, input_dim, vocab_size, p_unk, p_dropout, power, rel_dim, 
+	                     hidden_dim,
 	                     use_pretrained, pretrained, use_pos, pos_size, pos_dim);
 	if (conf.count("train"))
 		parser.train(corpus.train_sentences, corpus.dev_sentences,

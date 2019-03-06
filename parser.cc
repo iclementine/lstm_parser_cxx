@@ -26,7 +26,6 @@ using namespace dynet;
 using namespace dynet::mp;
 using namespace treebank;
 using namespace boost::posix_time;
-using namespace boost::gregorian;
 
 void InitCommandLine(int argc, char** argv, po::variables_map& conf) {
 	using namespace std;
@@ -133,12 +132,12 @@ public:
 	                       unsigned rel_dim, unsigned hidden_dim, bool t_use_pretrained,
 	                       const unordered_map<unsigned, vector<float>>& pretrained,
 	                       bool t_use_pos, unsigned pos_size, unsigned pos_dim) :
-		use_pos(t_use_pos), use_pretrained(t_use_pretrained),
-		p_unk(t_p_unk), p_dropout(t_p_dropout), power(t_power),
-		form(t_form), transition(t_transition),
-		stack_lstm(layers, lstm_input_dim, hidden_dim, model),
-		buffer_lstm(layers, lstm_input_dim, hidden_dim, model),
-		action_lstm(layers, action_dim, hidden_dim, model), pc(model) {
+			use_pos(t_use_pos), use_pretrained(t_use_pretrained),
+			p_unk(t_p_unk), p_dropout(t_p_dropout), power(t_power),
+			form(t_form), transition(t_transition),
+			stack_lstm(layers, lstm_input_dim, hidden_dim, model),
+			buffer_lstm(layers, lstm_input_dim, hidden_dim, model),
+			action_lstm(layers, action_dim, hidden_dim, model), pc(model) {
 		p_w = model.add_lookup_parameters(vocab_size, {input_dim});
 		p_a = model.add_lookup_parameters(action_size, {action_dim});
 		p_r = model.add_lookup_parameters(action_size, {rel_dim});
@@ -268,7 +267,19 @@ public:
 		return correct_head;
 	}
 
-	void output_conll(const vector<string>& sent, const vector<string>& sent_pos,
+	unsigned choose_action(ComputationGraph& hg,  Expression& adiste, const vector<unsigned> legal) {
+		Expression p_norme = softmax(adiste * power);
+		vector<float> p_norm = as_vector(hg.incremental_forward(p_norme));
+		float p = rand01(); unsigned ac = 0;
+		for (auto x: legal) {
+			ac = x;
+			p -= p_norm[x];
+			if (p <= 0) break;
+		}
+		return ac;
+	}
+
+	static void output_conll(const vector<string>& sent, const vector<string>& sent_pos,
 	                  const vector<int>& hyp) {
 		for (unsigned i = 1; i < sent.size(); ++i) {
 			string wit = sent[i];
@@ -295,7 +306,7 @@ public:
 		const bool build_training_graph = !gold_head.empty();
 		// set dropout and do unk replacement, compute reference
 		vector<unsigned> tsent = sent;
-		unsigned unk_id = form.stoi.at(Vocab::UNK);
+		const unsigned unk_id = form.stoi.at(Vocab::UNK);
 		map<int, vector<int>> gold_children;
 		if (build_training_graph) {
 			stack_lstm.set_dropout(0.3);
@@ -423,28 +434,7 @@ public:
 				}
 
 				//decide which action to take, by multinomial sample
-				double p = rand01();
-				for (unsigned i = 0; i < adist.size(); ++i) {
-					p -= adist[i];
-					if (p < 0.0) {
-						action = i; // action id
-						break;
-					}
-				}
-
-
-				// anothor mathod that
-				p = rand01();
-				if ((current_valid_actions.size() > dynamic_oracle.size()) && p < 0.5) {
-					vector<unsigned> non_oracle;
-					auto not_in_oracle = [&dynamic_oracle](unsigned x) -> bool {
-						return find(dynamic_oracle.begin(), dynamic_oracle.end(), x) ==  dynamic_oracle.end();
-					};
-					copy_if(current_valid_actions.begin(), current_valid_actions.end(),
-					        std::back_inserter(non_oracle), not_in_oracle);
-					action = non_oracle[rand0n(non_oracle.size())];
-				}
-
+				action = choose_action(hg, adiste, current_valid_actions);
 				if (find(dynamic_oracle.begin(), dynamic_oracle.end(), action) != dynamic_oracle.end()) ++right;
 			}
 
@@ -571,9 +561,10 @@ public:
 					s.save(pc);
 					ofstream os(trainer_state);
 					trainer.save(os);
+					best_uas = uas;
 				}
 				random_shuffle(ids.begin(), ids.end());
-				sid = 0; trainer.learning_rate *= 0.99;
+				sid = 0; trainer.learning_rate *= 0.9;
 			}
 
 			if ((tot_seen > 0) && (tot_seen % status_every_i_iterations == 0)) {

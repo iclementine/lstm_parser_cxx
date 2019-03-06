@@ -11,8 +11,8 @@
 #include <cassert>
 
 namespace treebank {
-	using namespace std;
-	
+using namespace std;
+
 // template <typename T>
 // ostream& operator<< (ostream& os, const vector<T>& vec) {
 // 	for (const T& x: vec)
@@ -31,7 +31,7 @@ struct Sentence {
 	vector<unsigned> depreli;
 	vector<string> transitions;
 	vector<unsigned> transitionsi;
-	
+
 	void clear() {
 		form.clear(); formi.clear();
 		pos.clear(); posi.clear();
@@ -42,15 +42,15 @@ struct Sentence {
 };
 
 struct Vocab {
-	
+
 public:
 	// some literals for vocabs to use if they need
 	// inclass initialization is only valid for literal type
-	static constexpr const char* UNK{"<unk>"};
-	static constexpr const char* PAD{"<pad>"};
-	static constexpr const char* START{"<s>"};
-	static constexpr const char* END{"</s>"};
-	
+	static constexpr const char* UNK {"<unk>"};
+	static constexpr const char* PAD {"<pad>"};
+	static constexpr const char* START {"<s>"};
+	static constexpr const char* END {"</s>"};
+
 public:
 	bool use_freq = true;
 	bool frozen = false;
@@ -59,27 +59,26 @@ public:
 	map<unsigned, string> itos;
 	map<string, unsigned> stofreq;
 	map<unsigned, unsigned> itofreq;
-	
+
 public:
 	explicit Vocab(vector<string> t_specials, bool t_use_freq):
-			specials(t_specials), 
-			use_freq(t_use_freq) {
+		use_freq(t_use_freq), specials(t_specials) {
 		if (specials.size()) {
 			if (use_freq) {
-				for (const string& s: specials) {
+				for (const string& s : specials) {
 					unsigned i = stoi.size();
 					stoi[s] = i; itos[i] = s;
 					stofreq[s] = 1; itofreq[i] = 1;
 				}
 			} else {
-				for (const string& s: specials) {
+				for (const string& s : specials) {
 					unsigned i = stoi.size();
 					stoi[s] = i; itos[i] = s;
 				}
 			}
 		}
 	}
-	
+
 	inline unsigned get_or_add(const string& word) {
 		auto iter = stoi.find(word);
 		if (iter == stoi.end()) {
@@ -88,7 +87,7 @@ public:
 				itos[id] = word; stoi[word] = id;
 				stofreq[word] = 1; itofreq[id] = 1;
 				return id;
-			} else 
+			} else
 				return stoi[UNK];
 		} else {
 			unsigned id = iter->second;
@@ -98,27 +97,27 @@ public:
 			return id;
 		}
 	}
-	
-	// to support operator << 
-	friend ostream& operator << (ostream &os, const Vocab& v) {
-		assert (v.stoi.size() == v.itos.size());
+
+	// to support operator <<
+	friend ostream& operator << (ostream& os, const Vocab& v) {
+		assert(v.stoi.size() == v.itos.size());
 		cerr << "vocab's size is " << v.stoi.size() << endl;
-		
+
 		bool large = false; unsigned i = 0;
-		for (const auto& entry: v.stoi) {
+		for (const auto& entry : v.stoi) {
 			if (i > 50) {
 				large = true;
 				break;
 			}
 			cerr << entry.first << ": " << entry.second << endl; ++i;
 		}
-		
+
 		if (large) {
 			cerr << "..." << endl;
 		}
 		return os;
 	}
-	
+
 };
 
 struct Corpus {
@@ -136,13 +135,13 @@ public:
 
 public:
 	Corpus():
-			form(vector<string>{Vocab::UNK}, true),
-			pos(vector<string>{Vocab::UNK}, false),
-			deprel(vector<string>{}, false),
-			transition(vector<string>{}, false),
-			chars(vector<string>{}, false) {
+		form(vector<string> {Vocab::UNK}, true),
+		pos(vector<string> {Vocab::UNK}, false),
+		deprel(vector<string> {}, false),
+		transition(vector<string> {}, false),
+		chars(vector<string> {}, false) {
 	}
-	
+
 	// 给定首字节， 判断这个 utf8 字符的长度
 	unsigned UTF8Len(unsigned char x) {
 		if (x < 0x80) return 1;
@@ -161,8 +160,8 @@ public:
 		transition.frozen = true;
 		chars.frozen = true;
 	}
-	
-	// load corpus of my specific format, this function can be re-written to adapt to 
+
+	// load corpus of my specific format, this function can be re-written to adapt to
 	// different format
 	void load_corpus(vector<Sentence>& sents, const string& file) {
 		ifstream corpus_file(file);
@@ -215,7 +214,7 @@ public:
 		corpus_file.close();
 		cerr << "Read in " << sents.size() << " sentences from " << file << endl;
 	}
-	
+
 	void load_corpus_dev(vector<Sentence>& sents, const string& file) {
 		freeze_vocabs();
 		load_corpus(sents, file);

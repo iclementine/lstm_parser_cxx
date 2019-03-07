@@ -678,7 +678,7 @@ int main(int argc, char** argv) {
 	
 	bool use_pos = conf["use_pos_tags"].as<bool>();
 	unsigned pos_size = 0; 
-	unsigned pos_dim;
+	unsigned pos_dim = 0;
 	if (use_pos) {
 		pos_size = corpus.pos.stoi.size();
 		pos_dim = conf["pos_dim"].as<unsigned>();

@@ -812,7 +812,7 @@ int main(int argc, char** argv) {
 		abort();
 	}
 	
-	cerr << "power for probability renormalizing" << endl;
+	cerr << "power for probability renormalizing: " << power << endl;
 	cerr << "====================" << endl;
 
 	// dynet build model

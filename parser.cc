@@ -41,6 +41,7 @@ void InitCommandLine(int argc, char** argv, po::variables_map& conf) {
 	("unk_strategy,o", po::value<unsigned>()->default_value(1), "Unknown word strategy: 1 = singletons become UNK with probability unk_prob")
 	("unk_prob,u", po::value<double>()->default_value(0.2), "Probably with which to replace singletons with UNK in training data")
 	("power", po::value<double>()->default_value(0.75), "power to probabilities before renormalizing")
+	("uniform_prob", po::value<double>()->default_value(0.5), "probability to perform uniformly random walking")
 	("dropout_prob,D", po::value<double>()->default_value(0.3), "Dropout probability of lstms")
 	("param,m", po::value<string>(), "Load/ save save model from/ to this file")
 	("trainer_state,s", po::value<string>(), "Load/ save trainer state from/ to this file")
@@ -95,6 +96,7 @@ public:
 	double p_unk;
 	double p_dropout;
 	double power;
+	float p_uniform;
 	Vocab& form;
 	Vocab& transition;
 	LSTMBuilder stack_lstm; // (layers, input, hidden, trainer)
@@ -128,12 +130,12 @@ public:
 	explicit ParserBuilder(ParameterCollection& model, Vocab& t_form, Vocab& t_transition,
 	                       unsigned layers, unsigned lstm_input_dim, unsigned action_dim, 
 	                       unsigned action_size, unsigned input_dim, unsigned vocab_size, 
-	                       double t_p_unk, double t_p_dropout, double t_power, 
+	                       double t_p_unk, double t_p_dropout, double t_power, double t_p_uniform,
 	                       unsigned rel_dim, unsigned hidden_dim, bool t_use_pretrained,
 	                       const unordered_map<unsigned, vector<float>>& pretrained,
 	                       bool t_use_pos, unsigned pos_size, unsigned pos_dim) :
 			use_pos(t_use_pos), use_pretrained(t_use_pretrained),
-			p_unk(t_p_unk), p_dropout(t_p_dropout), power(t_power),
+			p_unk(t_p_unk), p_dropout(t_p_dropout), power(t_power), p_uniform(t_p_uniform),
 			form(t_form), transition(t_transition),
 			stack_lstm(layers, lstm_input_dim, hidden_dim, model),
 			buffer_lstm(layers, lstm_input_dim, hidden_dim, model),
@@ -268,13 +270,18 @@ public:
 	}
 
 	unsigned choose_action(ComputationGraph& hg,  Expression& adiste, const vector<unsigned> legal) {
-		Expression p_norme = softmax(adiste * power);
-		vector<float> p_norm = as_vector(hg.incremental_forward(p_norme));
-		float p = rand01(); unsigned ac = 0;
-		for (auto x: legal) {
-			ac = x;
-			p -= p_norm[x];
-			if (p <= 0) break;
+		unsigned ac = 0;
+		if (rand01() < p_uniform) {
+			ac = legal.at(rand0n(legal.size()));
+		} else {
+			Expression p_norme = softmax(adiste * power);
+			vector<float> p_norm = as_vector(hg.incremental_forward(p_norme));
+			float p = rand01();
+			for (auto x: legal) {
+				ac = x;
+				p -= p_norm[x];
+				if (p <= 0) break;
+			}
 		}
 		return ac;
 	}
@@ -532,7 +539,7 @@ public:
 		}
 
 		// load trainer state
-		SimpleSGDTrainer trainer(pc, lr);
+		CyclicalSGDTrainer trainer(pc, lr * 0.1, lr, 2 * train_sentences.size());
 		if (resume && trainer_state.size()) {
 			ifstream is(trainer_state);
 			trainer.populate(is);
@@ -564,7 +571,7 @@ public:
 					best_uas = uas;
 				}
 				random_shuffle(ids.begin(), ids.end());
-				sid = 0; trainer.learning_rate *= 0.9;
+				sid = 0; p_uniform *= 0.9;
 			}
 
 			if ((tot_seen > 0) && (tot_seen % status_every_i_iterations == 0)) {
@@ -740,6 +747,7 @@ int main(int argc, char** argv) {
 	const auto p_unk = conf["unk_prob"].as<double>();
 	const auto p_dropout = conf["dropout_prob"].as<double>();
 	const auto power = conf["power"].as<double>();
+	const auto p_uniform = conf["uniform_prob"].as<double>();
 
 	// read in pretrained word embedding, I love iostream, stringstream, string, so good
 	unordered_map<unsigned, vector<float>> pretrained;
@@ -812,24 +820,27 @@ int main(int argc, char** argv) {
 		abort();
 	}
 	
-	cerr << "power for probability renormalizing" << endl;
+	cerr << "power for probability renormalizing " << power << endl
+	     << "probability to uniformly random walk instead of following the softmax policy " 
+	     << p_uniform << endl;
 	cerr << "====================" << endl;
 
 	// dynet build model
 	dynet::initialize(argc, argv, true);
 	ParameterCollection model;
 	ParserBuilder parser(model, corpus.form, corpus.transition, layers, lstm_input_dim, action_dim,
-	                     action_size, input_dim, vocab_size, p_unk, p_dropout, power, rel_dim, 
-	                     hidden_dim,
-	                     use_pretrained, pretrained, use_pos, pos_size, pos_dim);
-	if (conf.count("train"))
+	                     action_size, input_dim, vocab_size, p_unk, p_dropout, power, p_uniform, rel_dim, 
+	                     hidden_dim, use_pretrained, pretrained, use_pos, pos_size, pos_dim);
+	if (conf.count("train")) {
 		parser.train(corpus.train_sentences, corpus.dev_sentences,
 		             corpus.test_sentences, epoch, lr, status_every_i_iterations,
 		             resume, param, trainer_state);
 // 	SimpleSGDTrainer sgd(model, lr);
 // 	Learner learner(parser, corpus.train_sentences.size());
 // 	run_multi_process(4, &learner, &sgd, corpus.train_sentences, corpus.dev_sentences, epoch, corpus.train_sentences.size(), status_every_i_iterations);
-	parser.test(corpus.test_sentences, status_every_i_iterations, true, "lstm-parser.model", true);
+	} else {
+		parser.test(corpus.test_sentences, status_every_i_iterations, true, "lstm-parser.model", true);
+	}
 
 	return 0;
 }
